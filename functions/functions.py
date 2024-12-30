@@ -190,27 +190,6 @@ def outliers_remover(df, q=[0.05, 0.95], labels=False):
     return df2
 
 
-def cat_encoder(df):
-    c = 0
-    df2 = df.copy()
-    labels = df.columns
-
-    for i in labels:
-        uq = df[i].unique()
-        l = len(uq)
-        if type(uq.all()) is str:
-            c = c + 1
-            print(f"Coding {i} - {l} categories: ", end="")
-            nums = [int(i) for i in np.linspace(0, l - 1, l)]
-            for i in range(l):
-                print(f"{uq[i]} - {nums[i]}, ", end="")
-                df2 = df2.replace(uq[i], nums[i])
-            print("")
-
-    print(f"Coded categories in {c} columns\n")
-    return df2
-
-
 def mode(x):
     values, counts = np.unique(x, return_counts=True)
     return values[counts.argmax()]

@@ -8,6 +8,7 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.linear_model import RidgeClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.preprocessing import LabelEncoder
 from sklearn.naive_bayes import GaussianNB
 from sklearnex import patch_sklearn
 from xgboost import XGBClassifier
@@ -52,17 +53,18 @@ def main(dft_path):
     dft = null_remover(dft)
     df = outliers_remover(dft)
     labels = dft.columns
-    yNames = np.array(df['Label'])
-    df = cat_encoder(df)
+    class_label = labels[-1]
+    yNames = np.array(df[class_label])
 
-    y = np.array(df["Label"])
+    le = LabelEncoder()
+    y = le.fit_transform(np.array(df[class_label]))
     dfX = df[labels[:-1]]
     scaler = StandardScaler()
     scaler.fit(dfX)
     scaled = scaler.transform(dfX).T
     feature_names_out = scaler.get_feature_names_out(labels[:-1])
     dfX = pd.DataFrame({feature_names_out[i]: scaled[i] for i in range(len(feature_names_out))})
-    dfY = pd.DataFrame(data=y, columns=["Label"])
+    dfY = pd.DataFrame(data=y, columns=[class_label])
 
     if pre_selected_num != -1:
         skb = SelectKBest(f_classif, k=pre_selected_num)
@@ -70,10 +72,9 @@ def main(dft_path):
         ft = skb.get_feature_names_out()
         dfX = dfX[ft]
 
-    y = np.array(df['Label'])
-
     X, X_test, y, y_test = train_test_split(dfX, y, test_size=0.2)
-
+    print(y)
+    print(y_test)
     models = [('LogisticRegression',LogisticRegression(solver='liblinear',max_iter=1000)),
             ('KNeighborsClassifier',KNeighborsClassifier()),
             ('GaussianNB',GaussianNB()),

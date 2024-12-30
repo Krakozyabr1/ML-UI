@@ -32,7 +32,9 @@ def evals(dft_path,eval_method):
     labels = dft.columns
     df_X = dft[labels[:-1]]
     dfX = df_X.copy()
-    dfY = pd.DataFrame(data=np.array(dft["Label"]), columns=["Label"])
+    
+    class_label = labels[-1]
+    dfY = pd.DataFrame(data=np.array(dft[class_label]), columns=[class_label])
 
     if eval_method == "F score":
         f_statistic, _ = f_classif(dfX, dfY)
@@ -67,6 +69,7 @@ if dft_path_option != "":
         with st.form("plot_selector_form", clear_on_submit=False):
             dft = pd.read_csv(dft_path)
             labels = dft.columns[:-1]
+            class_label =  dft.columns[-1]
             hist_label = st.selectbox("Histogram:", options=labels)
             box_label = st.selectbox("Boxplot:", options=labels)
             l2, r2 = st.columns(2)
@@ -85,18 +88,18 @@ def main(dft,hist_label,box_label,pair_Xlabel,pair_Ylabel):
     scaled = scaler.fit_transform(df).T
     feature_names_out = scaler.get_feature_names_out(labels[:-1])
     df = pd.DataFrame({feature_names_out[i]: scaled[i] for i in range(len(feature_names_out))})
-    df['Label'] = dft['Label']
+    df[class_label] = dft[class_label]
 
     fig1 = plt.figure(figsize=(10,5))
-    sns.histplot(data=df,x=hist_label,hue='Label')
+    sns.histplot(data=df,x=hist_label,hue=class_label)
     st.pyplot(fig=fig1)
 
     fig2 = plt.figure(figsize=(10,5))
-    sns.boxplot(data=df,x=box_label,hue='Label')
+    sns.boxplot(data=df,x=box_label,hue=class_label)
     st.pyplot(fig=fig2)
 
     fig3 = plt.figure(figsize=(10,5))
-    sns.scatterplot(data=df,x=pair_Xlabel,y=pair_Ylabel,hue='Label')
+    sns.scatterplot(data=df,x=pair_Xlabel,y=pair_Ylabel,hue=class_label)
     st.pyplot(fig=fig3)
 
 

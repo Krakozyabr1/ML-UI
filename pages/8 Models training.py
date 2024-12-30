@@ -7,6 +7,7 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import RidgeClassifier
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.preprocessing import LabelEncoder
 from sklearn.naive_bayes import GaussianNB
 from sklearnex import patch_sklearn
 from xgboost import XGBClassifier
@@ -57,10 +58,11 @@ def main(dft_path):
     dft = null_remover(dft)
     df = outliers_remover(dft)
     labels = dft.columns
-    yNames = np.unique(np.array(df['Label']))
-    df = cat_encoder(df)
+    class_label = labels[-1]
+    yNames = np.unique(np.array(df[class_label]))
 
-    y = np.array(df["Label"])
+    le = LabelEncoder()
+    y = le.fit_transform(np.array(df[class_label]))
     dfX = df[labels[:-1]]
     scaled = scaler.transform(dfX).T
     feature_names_out = scaler.get_feature_names_out(labels[:-1])
