@@ -27,7 +27,7 @@ with left:
         select_file_b = st.form_submit_button("Confirm", type="primary")
 
 @st.cache_resource(show_spinner=False)
-def evals(dft_path,eval_method):
+def evals(dft_path,eval_method,to_plot=True):
     dft = pd.read_csv(dft_path)
     labels = dft.columns
     df_X = dft[labels[:-1]]
@@ -40,43 +40,48 @@ def evals(dft_path,eval_method):
         f_statistic, _ = f_classif(dfX, dfY)
         names_sorted = [x for _, x in sorted(zip(f_statistic, labels[:-1]), reverse=True)]
         values_sorted = sorted(f_statistic, reverse=True)
-        fig = plt.figure(figsize=(10,5))
-        plt.bar(names_sorted[:min([10,len(labels[:-1])])],values_sorted[:min([10,len(labels[:-1])])])
-        plt.ylabel('F score')
-        plt.xticks(rotation = 90)
-        st.pyplot(fig=fig)
+        if to_plot:
+            fig = plt.figure(figsize=(10,5))
+            plt.bar(names_sorted[:min([10,len(labels[:-1])])],values_sorted[:min([10,len(labels[:-1])])])
+            plt.ylabel('F score')
+            plt.xticks(rotation = 90)
+            st.pyplot(fig=fig)
 
     elif eval_method == 'Mutual info':
         mi = mutual_info_classif(dfX, dfY)
         names_sorted = [x for _, x in sorted(zip(mi, labels[:-1]), reverse=True)]
         values_sorted = sorted(mi, reverse=True)
-        fig = plt.figure(figsize=(10,5))
-        plt.bar(names_sorted[:min([10,len(labels[:-1])])],values_sorted[:min([10,len(labels[:-1])])])
-        plt.ylabel('Mi')
-        plt.xticks(rotation = 90)
-        st.pyplot(fig=fig)
+        if to_plot:
+            fig = plt.figure(figsize=(10,5))
+            plt.bar(names_sorted[:min([10,len(labels[:-1])])],values_sorted[:min([10,len(labels[:-1])])])
+            plt.ylabel('Mi')
+            plt.xticks(rotation = 90)
+            st.pyplot(fig=fig)
 
     else:
         names_sorted, values_sorted = spear(dfX, dfY)
-        fig = plt.figure(figsize=(10,5))
-        plt.bar(names_sorted[:min([10,len(labels[:-1])])],values_sorted[:min([10,len(labels[:-1])])])
-        plt.ylabel('Mean Spearman coef')
-        plt.xticks(rotation = 90)
-        st.pyplot(fig=fig)
+        if to_plot:
+            fig = plt.figure(figsize=(10,5))
+            plt.bar(names_sorted[:min([10,len(labels[:-1])])],values_sorted[:min([10,len(labels[:-1])])])
+            plt.ylabel('Mean Spearman coef')
+            plt.xticks(rotation = 90)
+            st.pyplot(fig=fig)
+
+    return names_sorted
 
 if dft_path_option != "":
     with left:
         with st.form("plot_selector_form", clear_on_submit=False):
             dft = pd.read_csv(dft_path)
-            labels = dft.columns[:-1]
+            labels = evals(dft_path,eval_method,False)
             class_label =  dft.columns[-1]
-            hist_label = st.selectbox("Histogram:", options=labels)
-            box_label = st.selectbox("Boxplot:", options=labels)
+            hist_label = st.selectbox("Histogram:", options=labels, index=0)
+            box_label = st.selectbox("Boxplot:", options=labels, index=0)
             l2, r2 = st.columns(2)
             with l2:
-                pair_Xlabel = st.selectbox("Scatterplot X:", options=labels)        
+                pair_Xlabel = st.selectbox("Scatterplot X:", options=labels, index=0)        
             with r2:
-                pair_Ylabel = st.selectbox("Scatterplot Y:", options=labels)  
+                pair_Ylabel = st.selectbox("Scatterplot Y:", options=labels, index=1)  
             select_plot_b = st.form_submit_button("Plot", type="primary")
 
 @st.cache_resource(show_spinner=False)
@@ -90,17 +95,19 @@ def main(dft,hist_label,box_label,pair_Xlabel,pair_Ylabel):
     df = pd.DataFrame({feature_names_out[i]: scaled[i] for i in range(len(feature_names_out))})
     df[class_label] = dft[class_label]
 
-    fig1 = plt.figure(figsize=(10,5))
-    sns.histplot(data=df,x=hist_label,hue=class_label)
-    st.pyplot(fig=fig1)
+    _, r3 = st.columns(2)
+    with r3:
+        fig1 = plt.figure(figsize=(10,5))
+        sns.histplot(data=df,x=hist_label,hue=class_label)
+        st.pyplot(fig=fig1)
 
-    fig2 = plt.figure(figsize=(10,5))
-    sns.boxplot(data=df,x=box_label,hue=class_label)
-    st.pyplot(fig=fig2)
+        fig2 = plt.figure(figsize=(10,5))
+        sns.boxplot(data=df,x=box_label,hue=class_label)
+        st.pyplot(fig=fig2)
 
-    fig3 = plt.figure(figsize=(10,5))
-    sns.scatterplot(data=df,x=pair_Xlabel,y=pair_Ylabel,hue=class_label)
-    st.pyplot(fig=fig3)
+        fig3 = plt.figure(figsize=(10,5))
+        sns.scatterplot(data=df,x=pair_Xlabel,y=pair_Ylabel,hue=class_label)
+        st.pyplot(fig=fig3)
 
 
 if select_file_b:
@@ -108,6 +115,6 @@ if select_file_b:
 
 if dft_path_option != "" or (select_file_b and dft_path_option != ""):
     with right:
-        evals(dft_path,eval_method)
+        _ = evals(dft_path,eval_method)
     main(dft,hist_label,box_label,pair_Xlabel,pair_Ylabel)
     
