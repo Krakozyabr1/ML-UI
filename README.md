@@ -54,3 +54,12 @@ Currently, it supports multi-channel recordings in the .edf format.
     * Classifies new data using trained models.
     * Requires a .csv file with features and a .pkl file with trained classifiers.
     * Outputs a .csv file with classification results.
+
+**Installation:**
+
+1. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+   Alternatively, use the provided install_reqs.bat script.
+2. Run the application: Use the run.bat script to launch the application.
