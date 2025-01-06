@@ -53,17 +53,17 @@ with left:
 def main(dft_path,pkl_path):
     dft = pd.read_csv(dft_path)
     with open(pkl_path, 'rb') as f:
-        scaler, models = pickle.load(f)
+        scaler, le, models = pickle.load(f)
     logtxtbox = st.empty()
     status_text = f'{"Getting data...":<31}\t'
     logtxtbox.text(status_text)
     labels = dft.columns
     dft = null_remover(dft)
+    dft = nan_remover(dft)
     df = outliers_remover(dft, [0.05, 0.95], labels[:-1])
 
     class_label = labels[-1]
-    le = LabelEncoder()
-    y = le.fit_transform(np.array(df[class_label]))
+    y = le.transform(np.array(df[class_label]))
     dfX = df[labels[:-1]]
     scaled = scaler.transform(dfX).T
     feature_names_out = scaler.get_feature_names_out(labels[:-1])
@@ -118,14 +118,14 @@ def main(dft_path,pkl_path):
         logtxtbox.text(status_text)
         ret.append((model_name, ft))
 
-    return ret, scaler
+    return ret, scaler, le
 
 if select_file_b:
     main.clear()
 
 if (dft_path_option != "" and pkl_path_option != "") or (select_file_b and dft_path_option != "" and pkl_path_option != ""):
     with right:
-        models, scaler = main(dft_path, pkl_path)
+        models, scaler, le = main(dft_path, pkl_path)
 
     with st.form("my_form", clear_on_submit=False, border=False):
         Methods = [i for (i, _) in models]
@@ -136,7 +136,7 @@ if (dft_path_option != "" and pkl_path_option != "") or (select_file_b and dft_p
         save_button = st.form_submit_button("Save selected", type="primary")
 
     if save_button:
-        to_save = (scaler, [models[i] for i in range(len(Methods)) if selected_models[i]])
+        to_save = (scaler, le, [models[i] for i in range(len(Methods)) if selected_models[i]])
         with open(saveto, 'wb') as f:
             pickle.dump(to_save, f)
             

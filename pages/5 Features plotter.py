@@ -27,8 +27,7 @@ with left:
         select_file_b = st.form_submit_button("Confirm", type="primary")
 
 @st.cache_resource(show_spinner=False)
-def evals(dft_path,eval_method,to_plot=True):
-    dft = pd.read_csv(dft_path)
+def evals(dft,eval_method,to_plot=True):
     labels = dft.columns
     df_X = dft[labels[:-1]]
     dfX = df_X.copy()
@@ -73,7 +72,10 @@ if dft_path_option != "":
     with left:
         with st.form("plot_selector_form", clear_on_submit=False):
             dft = pd.read_csv(dft_path)
-            labels = evals(dft_path,eval_method,False)
+            dft = null_remover(dft)
+            dft = nan_remover(dft)
+            df = outliers_remover(dft)
+            labels = evals(df,eval_method,False)
             class_label =  dft.columns[-1]
             hist_label = st.selectbox("Histogram:", options=labels, index=0)
             box_label = st.selectbox("Boxplot:", options=labels, index=0)
@@ -85,9 +87,7 @@ if dft_path_option != "":
             select_plot_b = st.form_submit_button("Plot", type="primary")
 
 @st.cache_resource(show_spinner=False)
-def main(dft,hist_label,box_label,pair_Xlabel,pair_Ylabel):
-    dft = null_remover(dft)
-    df = outliers_remover(dft)
+def main(df,hist_label,box_label,pair_Xlabel,pair_Ylabel):
     df = df[labels[:-1]]
     scaler = StandardScaler()
     scaled = scaler.fit_transform(df).T
@@ -115,6 +115,6 @@ if select_file_b:
 
 if dft_path_option != "" or (select_file_b and dft_path_option != ""):
     with right:
-        _ = evals(dft_path,eval_method)
-    main(dft,hist_label,box_label,pair_Xlabel,pair_Ylabel)
+        _ = evals(df,eval_method)
+    main(df,hist_label,box_label,pair_Xlabel,pair_Ylabel)
     

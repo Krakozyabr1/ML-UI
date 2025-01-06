@@ -1,4 +1,5 @@
 from scipy.signal import spectrogram, buttord, butter, sosfilt
+from sklearn.preprocessing import LabelEncoder
 from pywt import wavedec, dwt
 from scipy import fft, signal
 from statistics import mode
@@ -153,7 +154,7 @@ def zeros_remover(df, labels=False):
 
 
 def null_remover(df, labels=False):
-    df2 = df.copy()
+    df = df.copy()
     c = 0
     if type(labels) is bool:
         labels = df.columns
@@ -163,10 +164,31 @@ def null_remover(df, labels=False):
             print(f"Empty in {i}")
             c = c + 1
             median = df[i].median()
-            df2[i] = df[i].replace(np.nan, median)
+            df[i] = df[i].replace(np.nan, median)
 
     print(f"Replaced empty in {c} columns\n")
-    return df2
+    return df
+
+
+def nan_remover(df, labels=False):
+    if type(labels) is bool:
+        labels = df.columns
+
+    for i in labels:
+        exception_positions = []
+        numeric_types = (int, float, bool, np.number)
+        if not all(isinstance(x, numeric_types) for x in df[i]):
+            for j in range(len(df[i])):
+                try:
+                    print(type(df[i][j]))
+                    df[i][j] = float(df[i][j])
+                except:
+                    exception_positions.append(j)
+            median = df[i][~df.index.isin(exception_positions)].median()
+            for exception_position in exception_positions:
+                df[i][exception_position] = median
+
+    return df
 
 
 def outliers_remover(df, q=[0.05, 0.95], labels=False):

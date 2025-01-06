@@ -52,17 +52,17 @@ def main(dft_path):
         estimators = []
 
     with open(pkl_path, 'rb') as f:
-        scaler, loaded = pickle.load(f)
+        scaler, le, loaded = pickle.load(f)
         
     dft = pd.read_csv(dft_path)
     dft = null_remover(dft)
+    dft = nan_remover(dft)
     df = outliers_remover(dft)
     labels = dft.columns
     class_label = labels[-1]
     yNames = np.unique(np.array(df[class_label]))
 
-    le = LabelEncoder()
-    y = le.fit_transform(np.array(df[class_label]))
+    y = le.transform(np.array(df[class_label]))
     dfX = df[labels[:-1]]
     scaled = scaler.transform(dfX).T
     feature_names_out = scaler.get_feature_names_out(labels[:-1])

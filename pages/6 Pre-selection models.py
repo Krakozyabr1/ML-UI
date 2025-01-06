@@ -51,6 +51,7 @@ def main(dft_path):
     
     dft = pd.read_csv(dft_path)
     dft = null_remover(dft)
+    dft = nan_remover(dft)
     df = outliers_remover(dft)
     labels = dft.columns
     class_label = labels[-1]
@@ -147,7 +148,7 @@ def main(dft_path):
     estimators.append([clf1.best_estimator_, clf2.best_estimator_][int(clf1.best_score_ < clf2.best_score_)])
     status_text = status_text + f'Done! (cv score: {round(max([clf1.best_score_, clf2.best_score_])*100)}%)\n'
     logtxtbox.text(status_text)
-    return estimators, models, X_test, y_test, yNames, scaler
+    return estimators, models, X_test, y_test, yNames, scaler, le
 
 if select_file_b:
     main.clear()
@@ -159,7 +160,7 @@ if dft_path_option != "" or (select_file_b and dft_path_option != ""):
                                                                 'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',
                                                                 'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn'])
     with right:
-        estimators, models, X_test, y_test, yNames, scaler = main(dft_path)
+        estimators, models, X_test, y_test, yNames, scaler, le = main(dft_path)
 
     with st.form("my_form", clear_on_submit=False, border=False):
         Methods = [i for i,_ in models]
@@ -205,6 +206,6 @@ if dft_path_option != "" or (select_file_b and dft_path_option != ""):
     st.pyplot(fig=fig)
 
     if save_button:
-        to_save = (scaler, [(Methods[i], estimators[i]) for i in range(len(Methods)) if selected_models[i]])
+        to_save = (scaler, le, [(Methods[i], estimators[i]) for i in range(len(Methods)) if selected_models[i]])
         with open(saveto, 'wb') as f:
             pickle.dump(to_save, f)
