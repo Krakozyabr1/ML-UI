@@ -62,4 +62,11 @@ Currently, it supports multi-channel recordings in the .edf format.
    pip install -r requirements.txt
    ```
    Alternatively, use the provided install_reqs.bat script.
-2. Run the application: Use the run.bat script to launch the application.
+2. **Run the application:**
+   * Open a command window in the application folder.
+   * Run the command:
+   ```bash
+   streamlit run "ML UI.py"
+   ```
+   You can also use the run.bat script (might be more convenient on Windows).
+   
