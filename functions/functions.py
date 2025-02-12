@@ -1,10 +1,12 @@
 from scipy.signal import spectrogram, buttord, butter, sosfilt
 from sklearn.preprocessing import LabelEncoder
+from sklearn.impute import KNNImputer
 from pywt import wavedec, dwt
 from scipy import fft, signal
 from statistics import mode
 import scipy.stats as sst
 from math import log2
+import pandas as pd
 import numpy as np
 
 
@@ -172,44 +174,65 @@ def null_remover(df, labels=False):
 
 def nan_remover(df, labels=False):
     if type(labels) is bool:
-        labels = df.columns
+        labels = df.columns[:-1]
 
     for i in labels:
-        exception_positions = []
-        numeric_types = (int, float, bool, np.number)
-        if not all(isinstance(x, numeric_types) for x in df[i]):
-            for j in range(len(df[i])):
-                try:
-                    print(type(df[i][j]))
-                    df[i][j] = float(df[i][j])
-                except:
-                    exception_positions.append(j)
-            median = df[i][~df.index.isin(exception_positions)].median()
-            for exception_position in exception_positions:
-                df[i][exception_position] = median
+        if pd.api.types.is_numeric_dtype(df[i]):
+            continue
+        
+        try:
+            df[i] = pd.to_numeric(df[i], errors='coerce')
+
+            if df[i].isnull().any():
+                median_val = df[i].median()
+                df[i] = df[i].fillna(median_val)
+        except (TypeError, ValueError):
+            unique_values = df[i].unique()
+            if len(unique_values) > 2:
+                le = LabelEncoder()
+                df[i] = le.fit_transform(df[i].astype(str))
+            else:
+                mapping = {value: index for index, value in enumerate(unique_values)}
+                df[i] = df[i].map(mapping)
 
     return df
 
 
-def outliers_remover(df, q=[0.05, 0.95], labels=False):
-    c = 0
-    df2 = df.copy()
+def outliers_remover(df, max_iterations=5, labels=False):
     if type(labels) is bool:
         labels = df.columns
 
-    for i in labels:
-        if type(df[i].unique().all()) is str:
-            print(f"Type of {i} - str")
-        else:
-            min_val = df[i].quantile(q[0])
-            max_val = df[i].quantile(q[1])
-            if max(df[i]) > max_val or min(df[i]) < min_val:
-                c = c + 1
-                df2[i] = np.where(df2[i] > max_val, max_val, df2[i])
-                df2[i] = np.where(df2[i] < min_val, min_val, df2[i])
+    for iteration in range(max_iterations):
+        print(f"Iteration {iteration+1}")
+        c = 0
+        if iteration == 0:
+            dfX = df[labels[:-1]].copy()
+        imputer = KNNImputer(n_neighbors=2)
 
-    print(f"Replaced outliers in {c} columns\n")
-    return df2
+        for i in labels[:-1]:
+            if all(isinstance(x, str) for x in dfX[i]):
+                print(f"Type of {i} - str")
+            else:
+                Q1 = np.percentile(dfX[i], 25)
+                Q3 = np.percentile(dfX[i], 75)
+                IQR = Q3 - Q1
+
+                min_val = Q1 - 1.5 * IQR
+                max_val = Q3 + 1.5 * IQR
+                outliers = (dfX[i] < min_val) | (dfX[i] > max_val)
+                if outliers.any():
+                    c += 1
+                    dfX.loc[outliers, i] = None
+
+        if c == 0:
+            print("No outliers found")
+            break
+
+        print(f"Replaced outliers in {c} columns\n")
+        dfX = pd.DataFrame(imputer.fit_transform(dfX, df[labels[-1]]), columns=labels[:-1])
+        df.update(dfX)
+
+    return df
 
 
 def mode(x):
