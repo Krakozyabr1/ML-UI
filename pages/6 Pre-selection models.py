@@ -74,8 +74,6 @@ def main(dft_path):
         dfX = dfX[ft]
 
     X, X_test, y, y_test = train_test_split(dfX, y, test_size=0.2)
-    print(y)
-    print(y_test)
     models = [('LogisticRegression',LogisticRegression(solver='liblinear',max_iter=1000)),
             ('KNeighborsClassifier',KNeighborsClassifier()),
             ('GaussianNB',GaussianNB()),

@@ -37,6 +37,7 @@ def evals(dft,eval_method,to_plot=True):
 
     if eval_method == "F score":
         f_statistic, _ = f_classif(dfX, dfY)
+        np.nan_to_num(f_statistic, False, 0, 0, 0)
         names_sorted = [x for _, x in sorted(zip(f_statistic, labels[:-1]), reverse=True)]
         values_sorted = sorted(f_statistic, reverse=True)
         if to_plot:
@@ -68,15 +69,22 @@ def evals(dft,eval_method,to_plot=True):
 
     return names_sorted
 
+@st.cache_resource(show_spinner=False)
+def prepare_plot_selector(df):
+    df = nan_remover(df)
+    df = outliers_remover(df)
+    return df
+
 if dft_path_option != "":
     with left:
         with st.form("plot_selector_form", clear_on_submit=False):
-            dft = pd.read_csv(dft_path)
-            dft = null_remover(dft)
-            dft = nan_remover(dft)
-            df = outliers_remover(dft)
+            df = pd.read_csv(dft_path)
+            df = null_remover(df)
+            # print(df)
+            df = prepare_plot_selector(df)
+            # print(df)
             labels = evals(df,eval_method,False)
-            class_label =  dft.columns[-1]
+            class_label =  df.columns[-1]
             hist_label = st.selectbox("Histogram:", options=labels, index=0)
             box_label = st.selectbox("Boxplot:", options=labels, index=0)
             l2, r2 = st.columns(2)
@@ -86,14 +94,9 @@ if dft_path_option != "":
                 pair_Ylabel = st.selectbox("Scatterplot Y:", options=labels, index=1)  
             select_plot_b = st.form_submit_button("Plot", type="primary")
 
+
 @st.cache_resource(show_spinner=False)
 def main(df,hist_label,box_label,pair_Xlabel,pair_Ylabel):
-    df = df[labels[:-1]]
-    scaler = StandardScaler()
-    scaled = scaler.fit_transform(df).T
-    feature_names_out = scaler.get_feature_names_out(labels[:-1])
-    df = pd.DataFrame({feature_names_out[i]: scaled[i] for i in range(len(feature_names_out))})
-    df[class_label] = dft[class_label]
 
     _, r3 = st.columns(2)
     with r3:

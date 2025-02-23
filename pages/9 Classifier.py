@@ -56,7 +56,7 @@ def main(dft_path,pkl_path):
     feature_names_out = scaler.get_feature_names_out(labels[:-1])
     dfX = pd.DataFrame({feature_names_out[i]: scaled[i] for i in range(len(feature_names_out))})
     
-    ds = {'Name': list(df.loc[:,"Name"])}
+    ds = {'Name': list(df.iloc[:,-1])}
 
     status_text = ''
     logtxtbox = st.empty()
@@ -66,8 +66,6 @@ def main(dft_path,pkl_path):
         status_text = status_text + f'{modelname+'...':<31}\t'
         logtxtbox.text(status_text)
         ds[modelname] = est.predict(X)
-        # print(modelname)
-        # print(confusion_matrix([0]*len(est.predict(X)),est.predict(X)))
         status_text = status_text + f'Done!\n'
         logtxtbox.text(status_text)
 
@@ -75,6 +73,9 @@ def main(dft_path,pkl_path):
     df_out = pd.DataFrame(ds)
     for modelname in loaded:
         df_out = df_out.replace({modelname: di})
+    
+    df_out['Majority'] = df_out.filter(df_out.columns[1:]).mode(axis=1)[0]
+
     return df_out
 
 if select_file_b:

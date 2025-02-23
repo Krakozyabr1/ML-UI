@@ -156,17 +156,22 @@ def zeros_remover(df, labels=False):
 
 
 def null_remover(df, labels=False):
-    df = df.copy()
     c = 0
     if type(labels) is bool:
         labels = df.columns
 
     for i in labels:
         if any(df[i].isnull()):
-            print(f"Empty in {i}")
-            c = c + 1
-            median = df[i].median()
-            df[i] = df[i].replace(np.nan, median)
+            if pd.api.types.is_numeric_dtype(df[i]):
+                print(f"Empty in {i}")
+                c = c + 1
+                median = df[i].median()
+                df[i] = df[i].fillna(median)
+            else:
+                c = c + 1
+                mode = df[i].mode()[0]
+                print(f"Empty in {i}")
+                df[i] = df[i].fillna(mode)
 
     print(f"Replaced empty in {c} columns\n")
     return df
@@ -181,11 +186,14 @@ def nan_remover(df, labels=False):
             continue
         
         try:
-            df[i] = pd.to_numeric(df[i], errors='coerce')
+            numeric_column = pd.to_numeric(df[i], errors='coerce')
+            if numeric_column.isnull().all():
+                raise ValueError
+            elif numeric_column.isnull().any():
+                print(i)
+                median_val = numeric_column.median()
+                df[i] = numeric_column.fillna(median_val)
 
-            if df[i].isnull().any():
-                median_val = df[i].median()
-                df[i] = df[i].fillna(median_val)
         except (TypeError, ValueError):
             unique_values = df[i].unique()
             if len(unique_values) > 2:
@@ -207,11 +215,10 @@ def outliers_remover(df, max_iterations=5, labels=False):
         c = 0
         if iteration == 0:
             dfX = df[labels[:-1]].copy()
-        imputer = KNNImputer(n_neighbors=2)
 
         for i in labels[:-1]:
-            if all(isinstance(x, str) for x in dfX[i]):
-                print(f"Type of {i} - str")
+            if len(dfX[i].unique()) < 10:
+                print(f"{i} is categorical")
             else:
                 Q1 = np.percentile(dfX[i], 25)
                 Q3 = np.percentile(dfX[i], 75)
@@ -223,13 +230,13 @@ def outliers_remover(df, max_iterations=5, labels=False):
                 if outliers.any():
                     c += 1
                     dfX.loc[outliers, i] = None
+            dfX[i].fillna(value=dfX[i].mode(), inplace=True)
 
         if c == 0:
-            print("No outliers found")
+            print("No outliers found\n")
             break
 
         print(f"Replaced outliers in {c} columns\n")
-        dfX = pd.DataFrame(imputer.fit_transform(dfX, df[labels[-1]]), columns=labels[:-1])
         df.update(dfX)
 
     return df

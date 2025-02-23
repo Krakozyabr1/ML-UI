@@ -60,7 +60,7 @@ def main(dft_path,pkl_path):
     labels = dft.columns
     dft = null_remover(dft)
     dft = nan_remover(dft)
-    df = outliers_remover(dft, [0.05, 0.95], labels[:-1])
+    df = outliers_remover(dft)
 
     class_label = labels[-1]
     y = le.transform(np.array(df[class_label]))
