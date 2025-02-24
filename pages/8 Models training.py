@@ -174,14 +174,14 @@ if (dft_path_option != "" and pkl_path_option != "") or (select_file_b and dft_p
         selected_models = [True]*8
         for i in range(len(estimators)):
             selected_models[i] = st.checkbox(
-                            f'({round(Accs[i]*100)}%) {loaded[i][0]}',
+                            f'({Accs[i]*100:.2f}%) {loaded[i][0]}',
                             value=True,
                         )
         save_button = st.form_submit_button("Save selected", type="primary")
 
-    left2, right2 = st.columns(2)
+    columns2 = st.columns(2)
     for i, ((name, _), C) in enumerate(zip(loaded, Cs)):
-        with [left2, right2][i % 2]:
+        with columns2[i % 2]:
             fig, ax = plt.subplots(figsize=(7, 7))
             disp = ConfusionMatrixDisplay(confusion_matrix=C,display_labels=yNames)
             disp.plot(ax=ax,colorbar=False,cmap=cmap)
@@ -189,7 +189,7 @@ if (dft_path_option != "" and pkl_path_option != "") or (select_file_b and dft_p
             accs_txt = f'{name}: '
             for yName in range(len(np.unique(yNames))):
                 accs_txt = accs_txt + f'{round(Acc[yName]*100)}% '
-            accs_txt = accs_txt + f'({round(np.mean(Acc)*100)}%)'
+            accs_txt = accs_txt + f'({np.mean(Acc)*100:.2f}%)'
             plt.title(accs_txt)
             st.pyplot(fig=fig)
 
