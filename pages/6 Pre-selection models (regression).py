@@ -42,10 +42,18 @@ with left:
             )
         saveto_name = st.text_input("Select output .pkl file name:", value="selected_models").replace('.pkl', "")
         saveto = os.path.join(os.path.dirname(__file__), "..", f"Models/Pre-selection/{saveto_name}.pkl")
+
+        available_models = ['Ridge', 'Lasso', 'ElasticNet', 'DecisionTreeRegressor',
+                            'SVR','KNeighborsRegressor', 'XGBRegressor', 'GaussianProcessRegressor']
+        
+        to_use = [True]*8
+        for i, to_use_label in enumerate(available_models):
+            to_use[i] = st.checkbox(to_use_label, True)
+
         select_file_b = st.form_submit_button("Confirm", type="primary")
 
 @st.cache_resource(show_spinner=False)
-def main(dft_path):
+def main(dft_path, to_use):
     if 'estimators' not in globals():
         estimators = []
     
@@ -138,22 +146,23 @@ def main(dft_path):
     status_text = ''
     logtxtbox = st.empty()
     for i, params in enumerate(params_set):
-        status_text = status_text + f'{models[i][0]+'...':<31}\t'
-        logtxtbox.text(status_text)
-        clf = GridSearchCV(models[i][1], params, cv=5, n_jobs=-1, scoring='r2')
-        clf.fit(X, y)
-        estimators.append(clf.best_estimator_)
-        status_text = status_text + f'Done! (cv score: {round(clf.best_score_*100)}%)\n'
+        if to_use[i]:
+            status_text = status_text + f'{models[i][0]+'...':<31}\t'
+            logtxtbox.text(status_text)
+            clf = GridSearchCV(models[i][1], params, cv=5, n_jobs=-1, scoring='r2')
+            clf.fit(X, y)
+            estimators.append(clf.best_estimator_)
+            status_text = status_text + f'Done! (cv score: {round(clf.best_score_*100)}%)\n'
 
     logtxtbox.text(status_text)
-    return estimators, models, X_test, y_test, yNames, scaler
+    return estimators, [model for i, model in enumerate(models) if to_use[i]], X_test, y_test, yNames, scaler
 
 if select_file_b:
     main.clear()
 
-if dft_path_option != "" or (select_file_b and dft_path_option != ""):
+if (dft_path_option != "" or (select_file_b and dft_path_option != "")) and sum(to_use) > 0:
     with right:
-        estimators, models, X_test, y_test, yNames, scaler = main(dft_path)
+        estimators, models, X_test, y_test, yNames, scaler = main(dft_path, to_use)
 
     with st.form("my_form", clear_on_submit=False, border=False):
         Methods = [i for i,_ in models]
@@ -163,7 +172,7 @@ if dft_path_option != "" or (select_file_b and dft_path_option != ""):
             y_pred = est.predict(X_test)
             Accs.append(r2_score(y_test,y_pred))
 
-        selected_models = [True]*8
+        selected_models = [True]*sum(to_use)
         for i in range(len(estimators)):
             selected_models[i] = st.checkbox(
                             f'({Accs[i]*100:.2f}%) {models[i][0]}',

@@ -42,10 +42,19 @@ with left:
             )
         saveto_name = st.text_input("Select output .pkl file name:", value="selected_models").replace('.pkl', "")
         saveto = os.path.join(os.path.dirname(__file__), "..", f"Models/Pre-selection/{saveto_name}.pkl")
+
+        available_models = ['LogisticRegression','KNeighborsClassifier','GaussianNB',
+                            'DecisionTreeClassifier','RandomForestClassifier',
+                            'GradientBoostingClassifier','RidgeClassifier','SVC']
+        
+        to_use = [True]*8
+        for i, to_use_label in enumerate(available_models):
+            to_use[i] = st.checkbox(to_use_label, True)
+
         select_file_b = st.form_submit_button("Confirm", type="primary")
 
 @st.cache_resource(show_spinner=False)
-def main(dft_path):
+def main(dft_path, to_use):
     if 'estimators' not in globals():
         estimators = []
     
@@ -112,53 +121,44 @@ def main(dft_path):
     {
         'alpha' : [0.1,1,10],
         'solver' : ['auto', 'svd', 'cholesky', 'lsqr', 'sparse_cg', 'sag', 'saga'],
+    },
+    [{
+        'C' : [0.01, 0.1, 1.0, 10.0, 100.0],
+        'kernel' : ['rbf', 'sigmoid'],
+    },
+    {
+        'C' : [0.01, 0.1, 1.0, 10.0, 100.0],
+        'degree' : [1,2,3,4,5,6,7],
+        'kernel' : ['poly'],
     }
+    ]
     ]
 
     status_text = ''
     logtxtbox = st.empty()
     for i, params in enumerate(params_set):
-        status_text = status_text + f'{models[i][0]+'...':<31}\t'
-        logtxtbox.text(status_text)
-        clf = GridSearchCV(models[i][1], params, cv=5, n_jobs=-1)
-        clf.fit(X, y)
-        estimators.append(clf.best_estimator_)
-        status_text = status_text + f'Done! (cv score: {round(clf.best_score_*100)}%)\n'
+        if to_use[i]:
+            status_text = status_text + f'{models[i][0]+'...':<31}\t'
+            logtxtbox.text(status_text)
+            clf = GridSearchCV(models[i][1], params, cv=5, n_jobs=-1)
+            clf.fit(X, y)
+            estimators.append(clf.best_estimator_)
+            status_text = status_text + f'Done! (cv score: {round(clf.best_score_*100)}%)\n'
 
-    params1 = {
-        'C' : [0.01, 0.1, 1.0, 10.0, 100.0],
-        'kernel' : ['rbf', 'sigmoid'],
-    }
-
-    params2 = {
-        'C' : [0.01, 0.1, 1.0, 10.0, 100.0],
-        'degree' : [1,2,3,4,5,6,7],
-        'kernel' : ['poly'],
-    }
-
-    status_text = status_text + f'{models[7][0]+'...':<31}\t'
-
-    clf1 = GridSearchCV(models[7][1], params1, cv=5, n_jobs=-1)
-    clf1.fit(X, y)
-    clf2 = GridSearchCV(models[7][1], params2, cv=5, n_jobs=-1)
-    clf2.fit(X, y)
-
-    estimators.append([clf1.best_estimator_, clf2.best_estimator_][int(clf1.best_score_ < clf2.best_score_)])
-    status_text = status_text + f'Done! (cv score: {round(max([clf1.best_score_, clf2.best_score_])*100)}%)\n'
     logtxtbox.text(status_text)
-    return estimators, models, X_test, y_test, yNames, scaler, le
+    return estimators, [model for i, model in enumerate(models) if to_use[i]], X_test, y_test, yNames, scaler, le
 
 if select_file_b:
     main.clear()
 
-if dft_path_option != "" or (select_file_b and dft_path_option != ""):
+if (dft_path_option != "" or (select_file_b and dft_path_option != "")) and sum(to_use) > 0:
     cmap = st.selectbox("Confusion Matrix color map:", options=['viridis', 'plasma', 'inferno', 'magma', 'cividis',
                                                                 'Purples', 'Blues', 'Greens', 'Oranges', 'Reds',
                                                                 'bone', 'pink',
                                                                 'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',
                                                                 'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn'])
     with right:
-        estimators, models, X_test, y_test, yNames, scaler, le = main(dft_path)
+        estimators, models, X_test, y_test, yNames, scaler, le = main(dft_path, to_use)
 
     with st.form("my_form", clear_on_submit=False, border=False):
         Methods = [i for i,_ in models]
