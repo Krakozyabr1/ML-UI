@@ -19,6 +19,8 @@ import pickle
 import os
 from functions.functions import *
 
+from skopt import BayesSearchCV
+
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 patch_sklearn()
@@ -79,52 +81,52 @@ def main(dft_path):
 
     params_set = {
         'Ridge': {
-            'alpha': [0.1,0.2,0.5,1.0,2,5,10,20,50],
+            'alpha': (1e-2, 1e+2, 'log-uniform'),
             'solver': ['svd', 'cholesky', 'lsqr', 'sparse_cg', 'sag', 'saga'],
         },
         'Lasso': {
-            'alpha': [0.1,0.2,0.5,1.0,2,5,10,20,50],
+            'alpha': (1e-2, 1e+2, 'log-uniform'),
             'selection': ['cyclic', 'random'],
         },
         'ElasticNet': {
-            'alpha': [0.1,0.2,0.5,1.0,2,5,10,20,50],
+            'alpha': (1e-2, 1e+2, 'log-uniform'),
             'selection': ['cyclic', 'random'],
-            'l1_ratio': [0,0.1,0.2,0.5,0.7,0.9,1],
+            'l1_ratio': (0,1, 'uniform'),
         },
         'DecisionTreeRegressor': {
             'criterion': ['squared_error', 'friedman_mse', 'absolute_error', 'poisson'],
-            'max_depth': [1,2,5,10,20,50,100,None]
+            'max_depth': (1, 200, 'uniform'),
         },
         'SVR': [{
             'kernel': ['poly'],
-            'C': [0.1,1,10,100],
-            'epsilon': [0.01,0.1,0.2],
+            'C': (1e-3, 1e+3,'log-uniform'),
+            'epsilon': (0.01, 0.3,'log-uniform'),
             'gamma': ['scale', 'auto', 0.1, 1],
-            'degree': [2,3,4,5],
+            'degree': (2, 5),
         },
         {
-            'C': [0.1,1,10,100],
-            'epsilon': [0.01,0.1,0.2],
+            'C': (1e-3, 1e+3,'log-uniform'),
+            'epsilon': (0.01, 0.3,'log-uniform'),
             'gamma': ['scale', 'auto', 0.1, 1],
             'kernel': ['linear', 'rbf', 'sigmoid'],
         },
         ],
         'KNeighborsRegressor': {
-            'n_neighbors': [1,2,5,10],
+            'n_neighbors': (1, 10),
             'weights': ['uniform', 'distance'],
-            'algorithm': ['brute', 'ball_tree', 'kd_tree'],
-            'metric': ['cityblock', 'cosine', 'euclidean', 'l1', 'l2', 'nan_euclidean'],
+            'algorithm': ['auto'],
+            'metric': ['cityblock', 'cosine', 'euclidean', 'l1', 'l2','nan_euclidean'],
         },
         'XGBRegressor': {
-            'learning_rate' : [0.1,0.2,0.5],
-            'n_estimators' : [20,50,100],
-            'max_depth' : [2,5,10],
+            'learning_rate' : (0.1, 0.5, 'uniform'),
+            'n_estimators' : (20, 100),
+            'max_depth' : (2, 40),
         },
         'GaussianProcessRegressor': {
-            'kernel': [RBF(), Matern(), RationalQuadratic()],
-            'n_restarts_optimizer': [0, 1, 2, 5],
-            'alpha': [1e-10, 1e-5, 1e-2]
-        }
+            # 'kernel': [RBF(), Matern(), RationalQuadratic()],
+            'n_restarts_optimizer': (0, 5),
+            'alpha': (1e-10, 1e-2, 'log-uniform'),
+        },
     }
 
     status_text = ''
@@ -134,7 +136,7 @@ def main(dft_path):
         params = params_set[modelname]
         status_text = status_text + f'{modelname+'...':<31}\t'
         logtxtbox.text(status_text)
-        clf = GridSearchCV(models[modelname], params, cv=5, n_jobs=-1)
+        clf = BayesSearchCV(models[modelname], params, cv=5, n_points=2, n_iter=50, n_jobs=-1, scoring='r2')
         clf.fit(X, y)
         estimators.append(clf.best_estimator_)
         status_text = status_text + f'Done! (cv score: {round(clf.best_score_*100)}%)\n'
@@ -171,7 +173,8 @@ if (dft_path_option != "" and pkl_path_option != "") or (select_file_b and dft_p
     for i, (name, _) in enumerate(loaded):
         with columns2[i % 2]:
             fig, ax = plt.subplots(figsize=(7, 7))
-            y_pred = est.predict(X_test)
+            X_test = X.loc[:,loaded[i][1]]
+            y_pred = estimators[i].predict(X_test)
             ax.scatter(y_test, y_pred)
             sns.regplot(x=y_test, y=y_pred, scatter=False, line_kws={'linewidth': 3}, label='Regression Line')
             ax.plot([min(y_test),max(y_test)], [min(y_pred),max(y_pred)], 'r--', linewidth=3, label='Ideal Line')

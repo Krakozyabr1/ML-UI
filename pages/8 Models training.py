@@ -20,6 +20,7 @@ import warnings
 import pickle
 import os
 from functions.functions import *
+from skopt import BayesSearchCV
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -80,71 +81,66 @@ def main(dft_path):
             'SVC': SVC(),
             }
 
-    params_set = {'LogisticRegression': {
-        'penalty' : ['l1','l2'],
-        'C' : [0.01, 0.1, 1.0, 10.0, 100.0],
-        'solver' : ['liblinear', 'lbfgs', 'newton-cg', 'sag', 'saga', 'newton-cholesky'],
+    params_set = {'LogisticRegression': [{
+        'penalty' : ['l1'],
+        'C' : (1e-6, 1e+6, 'log-uniform'),
+        'solver' : ['liblinear', 'saga'],
     },
+    {
+        'penalty' : ['l2'],
+        'C' : (1e-6, 1e+6, 'log-uniform'),
+        'solver' : ['liblinear', 'lbfgs', 'newton-cg', 'sag', 'saga', 'newton-cholesky'],
+    }
+    ],
     'KNeighborsClassifier' : {
-        'n_neighbors' : [1, 2, 5, 10],
+        'n_neighbors' : (1, 10),
         'metric' : ['cityblock', 'cosine', 'euclidean', 'l1', 'l2', 'nan_euclidean'],
     },
     'DecisionTreeClassifier': {
-        'max_depth' : [1,5,10,20,30,40,50],
+        'max_depth' : (1, 40),
         'criterion' : ['gini', 'entropy', 'log_loss'],
     },
     'RandomForestClassifier': {
         'criterion' : ['gini', 'entropy', 'log_loss'],
-        'max_depth' : [10,20,30,40,50],
-        'n_estimators' : [10,20,50,100,200,500],
+        'max_depth' : (10, 40),
+        'n_estimators' : (10, 200),
     },
     'GaussianNB': {
-        'var_smoothing' : [1e-7,1e-8,1e-9,1e-10,1e-11],
+        'var_smoothing' : (1e-7, 1e+11, 'log-uniform'),
     },
     'GradientBoostingClassifier': {
-        'learning_rate' : [0.1,0.2,0.5],
-        'n_estimators' : [20,50,100,200,500],
-        'max_depth' : [2,5,10,20,50],
+        'learning_rate' : (0.1, 0.5, 'uniform'),
+        'n_estimators' : (10, 200),
+        'max_depth' : (5, 40),
     },
     'RidgeClassifier': {
-        'alpha' : [0.1,1,10],
+        'alpha' : (1e-2, 1e+2, 'log-uniform'),
         'solver' : ['auto', 'svd', 'cholesky', 'lsqr', 'sparse_cg', 'sag', 'saga'],
+    },
+    'SVC': [{
+        'C' : (1e-3, 1e+3, 'log-uniform'),
+        'kernel' : ['rbf', 'sigmoid'],
+    },
+    {
+        'C' : (1e-3, 1e+3, 'log-uniform'),
+        'degree' : (1, 5),
+        'kernel' : ['poly'],
     }
+    ]
     }
 
     status_text = ''
     logtxtbox = st.empty()
     for modelname, selected_labels in loaded:
         X = X_train.loc[:,selected_labels]
-        if modelname != 'SVC':
-            params = params_set[modelname]
-            status_text = status_text + f'{modelname+'...':<31}\t'
-            logtxtbox.text(status_text)
-            clf = GridSearchCV(models[modelname], params, cv=5, n_jobs=-1)
-            clf.fit(X, y)
-            estimators.append(clf.best_estimator_)
-            status_text = status_text + f'Done! (cv score: {round(clf.best_score_*100)}%)\n'
-        else:
-            params1 = {
-                'C' : [0.01, 0.1, 1.0, 10.0, 100.0],
-                'kernel' : ['rbf', 'sigmoid'],
-            }
-            params2 = {
-                'C' : [0.01, 0.1, 1.0, 10.0, 100.0],
-                'degree' : [1,2,3,4,5,6,7],
-                'kernel' : ['poly'],
-            }
-
-            status_text = status_text + f'{modelname+'...':<31}\t'
-            clf1 = GridSearchCV(models[modelname], params1, cv=5, n_jobs=-1)
-            clf1.fit(X, y)
-
-            clf2 = GridSearchCV(models[modelname], params2, cv=5, n_jobs=-1)
-            clf2.fit(X, y)
-
-            estimators.append([clf1.best_estimator_, clf2.best_estimator_][int(clf1.best_score_ < clf2.best_score_)])
-            status_text = status_text + f'Done! (cv score: {round(max([clf1.best_score_, clf2.best_score_])*100)}%)\n'
-            logtxtbox.text(status_text)
+        params = params_set[modelname]
+        status_text = status_text + f'{modelname+'...':<31}\t'
+        logtxtbox.text(status_text)
+        clf = BayesSearchCV(models[modelname], params, cv=5, n_points=2, n_iter=50, n_jobs=-1)
+        clf.fit(X, y)
+        estimators.append(clf.best_estimator_)
+        status_text = status_text + f'Done! (cv score: {round(clf.best_score_*100)}%)\n'
+    logtxtbox.text(status_text)
 
     return estimators, X_test, y_test, yNames, loaded, scaler
 

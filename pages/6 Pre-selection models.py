@@ -4,7 +4,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.model_selection import GridSearchCV
+# from sklearn.model_selection import GridSearchCV
 from sklearn.linear_model import RidgeClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier
@@ -21,6 +21,9 @@ import warnings
 import pickle
 import os
 from functions.functions import *
+
+from skopt import BayesSearchCV
+# from skopt.space import Real, Categorical, Integer
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -83,7 +86,7 @@ def main(dft_path, to_use):
         dfX = dfX[ft]
 
     X, X_test, y, y_test = train_test_split(dfX, y, test_size=0.2)
-    models = [('LogisticRegression',LogisticRegression(solver='liblinear',max_iter=1000)),
+    models = [('LogisticRegression',LogisticRegression(max_iter=1000)),
             ('KNeighborsClassifier',KNeighborsClassifier()),
             ('GaussianNB',GaussianNB()),
             ('DecisionTreeClassifier',DecisionTreeClassifier()),
@@ -93,42 +96,49 @@ def main(dft_path, to_use):
             ('SVC',SVC()),
             ]
 
-    params_set = [{
-        'penalty' : ['l1','l2'],
-        'C' : [0.01, 0.1, 1.0, 10.0, 100.0],
+    params_set = [[{
+        'penalty' : ['l1'],
+        'C' : (1e-6, 1e+6, 'log-uniform'),
+        'solver' : ['liblinear', 'saga'],
     },
     {
-        'n_neighbors' : [1, 2, 5, 10],
+        'penalty' : ['l2'],
+        'C' : (1e-6, 1e+6, 'log-uniform'),
+        'solver' : ['liblinear', 'lbfgs', 'newton-cg', 'sag', 'saga', 'newton-cholesky'],
+    }
+    ],
+    {
+        'n_neighbors' : (1, 10),
         'metric' : ['cityblock', 'cosine', 'euclidean', 'l1', 'l2', 'nan_euclidean'],
     },
     {
-        'var_smoothing' : [1e-7,1e-8,1e-9,1e-10,1e-11],
+        'var_smoothing' : (1e-7, 1e+11, 'log-uniform'),
     },
     {
-        'max_depth' : [1,5,10,20,30,40],
+        'max_depth' : (1, 40),
         'criterion' : ['gini', 'entropy', 'log_loss'],
     },
     {
         'criterion' : ['gini', 'entropy', 'log_loss'],
-        'max_depth' : [10,20,30,40],
-        'n_estimators' : [10,20,50,100,200],
+        'max_depth' : (10, 40),
+        'n_estimators' : (10, 200),
     },
     {
-        'learning_rate' : [0.1,0.2,0.5],
-        'n_estimators' : [20,50,100],
-        'max_depth' : [2,5,10],
+        'learning_rate' : (0.1, 0.5, 'uniform'),
+        'n_estimators' : (10, 200),
+        'max_depth' : (5, 40),
     },
     {
-        'alpha' : [0.1,1,10],
+        'alpha' : (1e-2, 1e+2, 'log-uniform'),
         'solver' : ['auto', 'svd', 'cholesky', 'lsqr', 'sparse_cg', 'sag', 'saga'],
     },
     [{
-        'C' : [0.01, 0.1, 1.0, 10.0, 100.0],
+        'C' : (1e-3, 1e+3, 'log-uniform'),
         'kernel' : ['rbf', 'sigmoid'],
     },
     {
-        'C' : [0.01, 0.1, 1.0, 10.0, 100.0],
-        'degree' : [1,2,3,4,5,6,7],
+        'C' : (1e-3, 1e+3, 'log-uniform'),
+        'degree' : (1, 5),
         'kernel' : ['poly'],
     }
     ]
@@ -140,7 +150,7 @@ def main(dft_path, to_use):
         if to_use[i]:
             status_text = status_text + f'{models[i][0]+'...':<31}\t'
             logtxtbox.text(status_text)
-            clf = GridSearchCV(models[i][1], params, cv=5, n_jobs=-1)
+            clf = BayesSearchCV(models[i][1], params, cv=5, n_points=2, n_iter=20, n_jobs=-1)
             clf.fit(X, y)
             estimators.append(clf.best_estimator_)
             status_text = status_text + f'Done! (cv score: {round(clf.best_score_*100)}%)\n'

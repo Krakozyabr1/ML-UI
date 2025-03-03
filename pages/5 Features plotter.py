@@ -23,7 +23,7 @@ with left:
         if dft_path_option != "":
             dft_path = os.path.join(dft_path_folder, dft_path_option)
 
-        eval_method = st.selectbox("Select features file:", options=["F score", 'Mutual info', 'Mean Spearman coef'])
+        eval_method = st.selectbox("Select features file:", options=['Mutual info', "F score", 'Mean Spearman coef'])
         select_file_b = st.form_submit_button("Confirm", type="primary")
 
 @st.cache_resource(show_spinner=False)
