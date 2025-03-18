@@ -53,8 +53,8 @@ def main(dft_path,pkl_path):
     logtxtbox.text(status_text)
     labels = dft.columns
     dft = null_remover(dft)
-    dft = nan_remover(dft)
-    df = outliers_remover(dft)
+    df = nan_remover(dft)
+    # df = outliers_remover(dft)
 
     class_label = labels[-1]
     if is_regression:

@@ -63,8 +63,8 @@ def main(dft_path, to_use):
     
     dft = pd.read_csv(dft_path)
     dft = null_remover(dft)
-    dft = nan_remover(dft)
-    df = outliers_remover(dft)
+    df = nan_remover(dft)
+    # df = outliers_remover(dft)
     labels = dft.columns
     class_label = labels[-1]
     yNames = np.array(df[class_label])

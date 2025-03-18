@@ -72,7 +72,7 @@ def evals(dft,eval_method,to_plot=True):
 @st.cache_resource(show_spinner=False)
 def prepare_plot_selector(df):
     df = nan_remover(df)
-    df = outliers_remover(df)
+    # df = outliers_remover(df)
     return df
 
 if dft_path_option != "":

@@ -39,6 +39,12 @@ with left:
         if dft_path_option != "":
             dft_path = os.path.join(dft_path_folder, dft_path_option)
 
+        left2, right2 = st.columns(2)
+        with left2:
+            use_sig = st.checkbox('Use sigmoid transform', value=False)
+        with right2:
+            use_round = st.checkbox('Round output', value=False)
+
         pre_selected_num = int(
                 st.text_input("Number of features to use for grid search:", value="-1")
             )
@@ -53,6 +59,9 @@ with left:
             to_use[i] = st.checkbox(to_use_label, True)
 
         select_file_b = st.form_submit_button("Confirm", type="primary")
+
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
 
 @st.cache_resource(show_spinner=False)
 def main(dft_path, to_use):
@@ -172,6 +181,10 @@ if (dft_path_option != "" or (select_file_b and dft_path_option != "")) and sum(
         
         for i, est in enumerate(estimators):
             y_pred = est.predict(X_test)
+            if use_sig:
+                y_pred = sigmoid(y_pred)
+            if use_round:
+                y_pred = np.round(y_pred)
             Accs.append(r2_score(y_test,y_pred))
 
         selected_models = [True]*sum(to_use)
@@ -187,6 +200,10 @@ if (dft_path_option != "" or (select_file_b and dft_path_option != "")) and sum(
         with columns2[i % 2]:
             fig, ax = plt.subplots(figsize=(7, 7))
             y_pred = estimators[i].predict(X_test)
+            if use_sig:
+                y_pred = sigmoid(y_pred)
+            if use_round:
+                y_pred = np.round(y_pred)
             ax.scatter(y_test, y_pred)
             sns.regplot(x=y_test, y=y_pred, scatter=False, line_kws={'linewidth': 3}, label='Regression Line')
             ax.plot([min(y_test),max(y_test)], [min(y_pred),max(y_pred)], 'r--', linewidth=3, label='Ideal Line')

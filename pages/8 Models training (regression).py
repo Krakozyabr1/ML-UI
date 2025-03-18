@@ -36,6 +36,12 @@ with left:
         if dft_path_option != "":
             dft_path = os.path.join(dft_path_folder, dft_path_option)
 
+        left2, right2 = st.columns(2)
+        with left2:
+            use_sig = st.checkbox('Use sigmoid transform', value=False)
+        with right2:
+            use_round = st.checkbox('Round output', value=False)
+
         pkl_path_folder = os.path.join(os.path.dirname(__file__), "..", "Features/Selected features")
         pkl_path_ls = os.listdir(pkl_path_folder)
         pkl_path_option = st.selectbox("Select models file:", options=[""]+pkl_path_ls)
@@ -45,6 +51,9 @@ with left:
         saveto_name = st.text_input("Select output .pkl file name:", value="selected_models").replace('.pkl', "")
         saveto = os.path.join(os.path.dirname(__file__), "..", f"Models/Trained/{saveto_name}.pkl")
         select_file_b = st.form_submit_button("Confirm", type="primary")
+
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
 
 @st.cache_resource(show_spinner=False)
 def main(dft_path):
@@ -159,6 +168,10 @@ if (dft_path_option != "" and pkl_path_option != "") or (select_file_b and dft_p
         for i, est in enumerate(estimators):
             X_test = X.loc[:,loaded[i][1]]
             y_pred = est.predict(X_test)
+            if use_sig:
+                y_pred = sigmoid(y_pred)
+            if use_round:
+                y_pred = np.round(y_pred)
             Accs.append(r2_score(y_test,y_pred))
 
         selected_models = [True]*8
@@ -175,6 +188,10 @@ if (dft_path_option != "" and pkl_path_option != "") or (select_file_b and dft_p
             fig, ax = plt.subplots(figsize=(7, 7))
             X_test = X.loc[:,loaded[i][1]]
             y_pred = estimators[i].predict(X_test)
+            if use_sig:
+                y_pred = sigmoid(y_pred)
+            if use_round:
+                y_pred = np.round(y_pred)
             ax.scatter(y_test, y_pred)
             sns.regplot(x=y_test, y=y_pred, scatter=False, line_kws={'linewidth': 3}, label='Regression Line')
             ax.plot([min(y_test),max(y_test)], [min(y_pred),max(y_pred)], 'r--', linewidth=3, label='Ideal Line')
