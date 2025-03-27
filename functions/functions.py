@@ -26,39 +26,34 @@ def sgram_part(
         window=window,
     )
 
-    df = f[1] - f[0]
     if frs[1] < 0:
-        f = f[int(frs[0] / df):]
-        Sxx = Sxx[int(frs[0] / df):, :]
+        f_indices = np.where(f >= frs[0])[0]
     else:
-        f = f[int(frs[0] / df) : (int(frs[1] / df) + 1)]
-        Sxx = Sxx[int(frs[0] / df) : (int(frs[1] / df) + 1), :]
+        f_indices = np.where((f >= frs[0]) & (f <= frs[1]))[0]
 
-    PSD = []
-    for i in range(len(t)):
-        PSD.append(np.mean(Sxx[:, i]))
+    f = f[f_indices]
+    Sxx = Sxx[f_indices, :]
+
+    PSD = np.mean(Sxx, axis=0)
 
     return f, t, Sxx, PSD
 
 
 def spear(dfX, dfY):
-    dfYs = []
     labels = np.unique(np.array(dfY))
-    for label in labels:
-        dfYt = dfY.copy()
-        dfYt[dfY != label] = 0
-        dfYt[dfY == label] = 1
-        dfYs.append(dfYt)
+    dfYs = [pd.Series((dfY == label).astype(int)) for label in labels]
     names = np.array(dfX.columns)
     ret = []
     for i in names:
-        if all(dfX.loc[:, i]) == dfX.loc[1, i]:
+        if dfX[i].nunique() == 1:
             print(f"{i} - constant")
             ret.append(0)
         else:
             r = [abs(sst.spearmanr(dfX.loc[:, i], dfY).statistic) for dfY in dfYs]
             ret.append(np.mean(r))
-    return [x for _, x in sorted(zip(ret, names), reverse=True)], sorted(ret, reverse=True)
+
+    sorted_names, sorted_ret = zip(*sorted(zip(ret, names), reverse=True))     
+    return list(sorted_names), list(sorted_ret)
 
 
 def r_peaks(ecg,fs,maxiter=100):
@@ -626,19 +621,13 @@ def entropy_params(sig, name):
 
 
 def pRR50(sig):
-    ret = 0
-    for i in range(len(sig)):
-        if abs(sig[i] - sig[i+1]) > 50e-3:
-            ret = ret + 100
-    return ret/(len(sig)-1)
+    diffs = np.abs(np.diff(sig))
+    return np.sum(diffs > 50e-3) / (len(sig) - 1) * 100
 
 
 def pRR20(sig):
-    ret = 0
-    for i in range(len(sig)):
-        if abs(sig[i] - sig[i+1]) > 20e-3:
-            ret = ret + 100
-    return ret/(len(sig)-1)
+    diffs = np.abs(np.diff(sig))
+    return np.sum(diffs > 20e-3) / (len(sig) - 1) * 100
 
 
 def eeg_analyser(ds, fs, filters, wlt, level, ent=False):

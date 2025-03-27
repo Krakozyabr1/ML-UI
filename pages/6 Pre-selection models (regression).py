@@ -46,8 +46,10 @@ with left:
             use_round = st.checkbox('Round output', value=False)
 
         pre_selected_num = int(
-                st.text_input("Number of features to use for grid search:", value="-1")
+                st.text_input("Number of features to use for BayesSearchCV:", value="-1")
             )
+        n_iter = int(st.text_input("Number of iterations for BayesSearchCV:", value="20"))
+
         saveto_name = st.text_input("Select output .pkl file name:", value="selected_models").replace('.pkl', "")
         saveto = os.path.join(os.path.dirname(__file__), "..", f"Models/Pre-selection/{saveto_name}.pkl")
 
@@ -64,7 +66,7 @@ def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
 @st.cache_resource(show_spinner=False)
-def main(dft_path, to_use):
+def main(dft_path, to_use, n_iter):
     if 'estimators' not in globals():
         estimators = []
     
@@ -160,7 +162,7 @@ def main(dft_path, to_use):
         if to_use[i]:
             status_text = status_text + f'{models[i][0]+'...':<31}\t'
             logtxtbox.text(status_text)
-            clf = BayesSearchCV(models[i][1], params, cv=5, n_points=2, n_iter=20, n_jobs=-1, scoring='r2')
+            clf = BayesSearchCV(models[i][1], params, cv=5, n_points=2, n_iter=n_iter, n_jobs=-1, scoring='r2')
             clf.fit(X, y)
             estimators.append(clf.best_estimator_)
             status_text = status_text + f'Done! (cv score: {round(clf.best_score_*100)}%)\n'
@@ -173,7 +175,7 @@ if select_file_b:
 
 if (dft_path_option != "" or (select_file_b and dft_path_option != "")) and sum(to_use) > 0:
     with right:
-        estimators, models, X_test, y_test, yNames, scaler = main(dft_path, to_use)
+        estimators, models, X_test, y_test, yNames, scaler = main(dft_path, to_use, n_iter)
 
     with st.form("my_form", clear_on_submit=False, border=False):
         Methods = [i for i,_ in models]

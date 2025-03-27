@@ -43,12 +43,14 @@ with left:
         if pkl_path_option != "":
             pkl_path = os.path.join(pkl_path_folder, pkl_path_option)
 
+        n_iter = int(st.text_input("Number of iterations for BayesSearchCV:", value="50"))
+
         saveto_name = st.text_input("Select output .pkl file name:", value="selected_models").replace('.pkl', "")
         saveto = os.path.join(os.path.dirname(__file__), "..", f"Models/Trained/{saveto_name}.pkl")
         select_file_b = st.form_submit_button("Confirm", type="primary")
 
 @st.cache_resource(show_spinner=False)
-def main(dft_path):
+def main(dft_path, n_iter):
     if 'estimators' not in globals():
         estimators = []
 
@@ -136,7 +138,7 @@ def main(dft_path):
         params = params_set[modelname]
         status_text = status_text + f'{modelname+'...':<31}\t'
         logtxtbox.text(status_text)
-        clf = BayesSearchCV(models[modelname], params, cv=5, n_points=2, n_iter=50, n_jobs=-1)
+        clf = BayesSearchCV(models[modelname], params, cv=5, n_points=2, n_iter=n_iter, n_jobs=-1)
         clf.fit(X, y)
         estimators.append(clf.best_estimator_)
         status_text = status_text + f'Done! (cv score: {round(clf.best_score_*100)}%)\n'
@@ -154,7 +156,7 @@ if (dft_path_option != "" and pkl_path_option != "") or (select_file_b and dft_p
                                                                 'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',
                                                                 'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn'])
     with right:
-        estimators, X, y_test, yNames, loaded, scaler = main(dft_path)
+        estimators, X, y_test, yNames, loaded, scaler = main(dft_path, n_iter)
 
     with st.form("my_form", clear_on_submit=False, border=False):
         Methods = [i for i,_ in loaded]

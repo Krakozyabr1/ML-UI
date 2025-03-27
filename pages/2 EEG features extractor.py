@@ -19,6 +19,14 @@ def readedf(selected_file):
     selected_labels = [False] * len(sig_labels)
     return signals, signal_headers, header, sig_labels, fs, t, selected_labels
 
+def myfun(e, i, start_time, labels, filters, total_files, wlt, wlt_level):
+    signals, _, _ = highlevel.read_edf(i)
+
+    datarow = {label: signals[i] for i, label in enumerate(labels) if selected_labels[i]}
+
+    val, param_name = eeg_analyser(datarow, fs, filters, wlt, wlt_level)
+    _ = progress_tracker(logtxtbox, time.time(), start_time, e + 1, total_files)
+    return {param_name[j]: val[j] for j in range(len(param_name))}
 
 st.set_page_config(layout="wide")
 
@@ -100,58 +108,48 @@ for check in [s_dir, filestoread]:
         is_ready = False
         break
 
-if is_ready:
-    if analyze_b:
-        with right:
-            logtxtbox = st.empty()
-            if learning_check:
-                M = []
-                for class_ in classes:
-                    M.extend([class_] * filestoread)
+if is_ready and analyze_b:
+    with right:
+        logtxtbox = st.empty()
+        if learning_check:
+            M = []
+            for class_ in classes:
+                M.extend([class_] * filestoread)
 
-            if learning_check:
-                ls = []
-                for dir_ in dirs:
-                    ls.extend([dir_ + i for i in os.listdir(dir_)][0:filestoread])
-            else:
-                ls = os.listdir(s_dir)
-            
-            total_files = len(ls)
-            start_time = time.time()
+        if learning_check:
+            ls = []
+            for dir_ in dirs:
+                ls.extend([dir_ + i for i in os.listdir(dir_)][0:filestoread])
+        else:
+            ls = os.listdir(s_dir)
+        
+        total_files = len(ls)
+        start_time = time.time()
 
-            filters = create_eeg_filters(fs)
+        filters = create_eeg_filters(fs)
 
-            def myfun(e, i, start_time, labels, filters, total_files, wlt, wlt_level):
-                signals, _, _ = highlevel.read_edf(i)
-
-                datarow = {label: signals[i] for i, label in enumerate(labels) if selected_labels[i]}
-
-                val, param_name = eeg_analyser(datarow, fs, filters, wlt, wlt_level)
-                _ = progress_tracker(logtxtbox, time.time(), start_time, e + 1, total_files)
-                return {param_name[j]: val[j] for j in range(len(param_name))}
-
-            if learning_check:
-                ds = [
-                        myfun(e, i, start_time, labels, filters, total_files, wlt, wlt_level)
-                        for e, i in enumerate(ls)
-                    ]
-            else:
-                ds = [
-                    myfun(e, s_dir+'\\'+i, start_time, labels, filters, total_files, wlt, wlt_level)
+        if learning_check:
+            ds = [
+                    myfun(e, i, start_time, labels, filters, total_files, wlt, wlt_level)
                     for e, i in enumerate(ls)
                 ]
+        else:
+            ds = [
+                myfun(e, s_dir+'\\'+i, start_time, labels, filters, total_files, wlt, wlt_level)
+                for e, i in enumerate(ls)
+            ]
 
-            df = pd.DataFrame(ds)
-            if learning_check:
-                df["Label"] = M
-            else:
-                df["Name"] = [x[:-4] for x in ls]
-            df.to_csv(saveto, columns=df.columns, header=df.columns, index=False)
+        df = pd.DataFrame(ds)
+        if learning_check:
+            df["Label"] = M
+        else:
+            df["Name"] = [x[:-4] for x in ls]
+        df.to_csv(saveto, columns=df.columns, header=df.columns, index=False)
 
-            elap = time.time() - start_time
-            elap_h = elap // 3600
-            elap_m = elap // 60 - 60 * elap_h
-            elap_s = elap % 60
-            st.text(f"Done! Time Elapsed: {elap_h:02.0f}:{elap_m:02.0f}:{elap_s:02.0f}")
+        elap = time.time() - start_time
+        elap_h = elap // 3600
+        elap_m = elap // 60 - 60 * elap_h
+        elap_s = elap % 60
+        st.text(f"Done! Time Elapsed: {elap_h:02.0f}:{elap_m:02.0f}:{elap_s:02.0f}")
 
-        st.dataframe(df, column_config={x: st.column_config.NumberColumn(format="%.3e") for x in df.columns[:-1]})
+    st.dataframe(df, column_config={x: st.column_config.NumberColumn(format="%.3e") for x in df.columns[:-1]})

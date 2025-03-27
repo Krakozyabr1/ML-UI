@@ -24,6 +24,7 @@ with left:
         file_dir = st.text_input("Select .edf files directory:", value="").replace(
             '"', ""
         )
+
         if file_dir != "":
             if file_dir[-1] != "\\":
                 file_dir += "\\"

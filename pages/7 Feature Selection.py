@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif, f_regression, mutual_info_regression
 from mlxtend.feature_selection import SequentialFeatureSelector as SFS
+from sklearn.model_selection import cross_val_score
+from joblib import Parallel, delayed
 from sklearnex import patch_sklearn
+from sklearn.base import clone
 import streamlit as st
+from tqdm import tqdm
 import pandas as pd
 import numpy as np
 import warnings
@@ -13,6 +17,35 @@ from functions.functions import *
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 patch_sklearn()
+
+def feature_selection_importance(X, y, model, cv=5, scoring='accuracy'):
+    if hasattr(model, 'feature_importances_'):
+        importance = model.feature_importances_
+    elif hasattr(model, 'coef_'):
+        importance = np.abs(model.coef_).flatten()
+    else:
+        raise ValueError("Model does not have feature_importances_ or coef_ attribute.")
+
+    feature_indices = np.argsort(importance)[::-1]
+
+    best_score = 0
+    best_features = []
+
+    def evaluate_features(selected_features):
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)
+            X_selected = X.iloc[:, selected_features]
+            scores = cross_val_score(clone(model), X_selected, y, cv=cv, scoring=scoring)
+        return np.mean(scores), selected_features
+
+    results = Parallel(n_jobs=-1)(delayed(evaluate_features)(feature_indices[:i]) for i in tqdm(range(1, X.shape[1] + 1)))
+
+    for mean_score, selected_features in results:
+        if mean_score > best_score:
+            best_score = mean_score
+            best_features = selected_features
+
+    return best_features.tolist(), best_score
 
 st.set_page_config(layout="wide")
 
@@ -37,6 +70,8 @@ with left:
         saveto_name = st.text_input("Select output .pkl file name:", value="selected_features").replace('.pkl', "")
         saveto = os.path.join(os.path.dirname(__file__), "..", f"Features/Selected features/{saveto_name}.pkl")
         is_regression = st.checkbox('Regression')
+        use_model_based = st.checkbox('Use model-specific scores/coefficients', value=True)
+        selection_method = st.selectbox("Method:",options=['Forward', 'Backward'])
 
         select_file_b = st.form_submit_button("Confirm", type="primary")
 
@@ -84,12 +119,25 @@ def main(dft_path,pkl_path):
                 feature_importances = pd.Series(est.feature_importances_, index=df_X.columns)
                 selected_features = feature_importances.nlargest(pre_selection_trees).index
                 df_X = df_X[selected_features]
-        elif model_name in ['LogisticRegression','RidgeClassifier', 'Ridge', 'Lasso', 'ElasticNet']:
+            
+            ft, best_score = feature_selection_importance(df_X,
+                                         y,
+                                         est,
+                                         cv=5,
+                                         scoring=["accuracy","r2"][is_regression])
+
+        elif model_name in ['LogisticRegression', 'RidgeClassifier', 'Ridge', 'Lasso', 'ElasticNet']:
             if pre_selection != -1:
                 skb = SelectKBest([f_classif, f_regression][is_regression], k=pre_selection)
                 skb.fit_transform(df_X, dfY.values.ravel())
                 ft = skb.get_feature_names_out()
                 df_X = df_X[ft]
+            
+            ft, best_score = feature_selection_importance(df_X,
+                                         y,
+                                         est,
+                                         cv=5,
+                                         scoring=["accuracy","r2"][is_regression])
         else:
             if pre_selection != -1:
                 skb = SelectKBest([mutual_info_classif, mutual_info_regression][is_regression], k=pre_selection)
@@ -97,21 +145,22 @@ def main(dft_path,pkl_path):
                 ft = skb.get_feature_names_out()
                 df_X = df_X[ft]
 
-        sfs = SFS(
-            est,
-            k_features=[(1, max_features), "best"][max_features == -1],
-            forward=True,
-            floating=False,
-            verbose=2,
-            scoring=["accuracy","r2"][is_regression],
-            n_jobs=-1,
-            cv=5,
-        )
+            sfs = SFS(
+                est,
+                k_features=[(1, max_features), "best"][max_features == -1],
+                forward=selection_method == 'Forward',
+                floating=False,
+                verbose=1,
+                scoring=["accuracy","r2"][is_regression],
+                n_jobs=-1,
+                cv=5,
+            )
 
-        sfs = sfs.fit(df_X, dfY.values.ravel())
-        ft = sfs.k_feature_names_
+            sfs = sfs.fit(df_X, dfY.values.ravel())
+            ft = sfs.k_feature_names_
+            best_score = sfs.k_score_
 
-        status_text = status_text + f"Done! {len(ft)} features (cv score: {round(100*(sfs.k_score_))}%)\n"
+        status_text = status_text + f"Done! {len(ft)} features (cv score: {round(100*(best_score))}%)\n"
         logtxtbox.text(status_text)
         ret.append((model_name, ft))
 
