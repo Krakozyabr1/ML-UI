@@ -6,6 +6,20 @@ from scipy import fft
 import numpy as np
 import os
 
+folders_to_create = [
+    "Features/Learning",
+    "Features/Selected features",
+    "Features/ToClassify",
+    "Models/Pre-selection",
+    "Models/Trained",
+]
+
+for folder in folders_to_create:
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+        print(f"Created folder: {folder}")
+    else:
+        print(f"Folder already exists: {folder}")
 
 variants = ["EEG", "ECG"]
 
