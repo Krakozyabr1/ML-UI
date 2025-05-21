@@ -66,7 +66,10 @@ def main(dft_path,pkl_path):
     logtxtbox = st.empty()
     for modelname in loaded:
         (est, selected_labels) = loaded[modelname]
-        X = dfX.loc[:,selected_labels]
+        try:
+            X = dfX.loc[:,selected_labels]
+        except:
+            X = dfX.iloc[:,selected_labels]
         status_text = status_text + f'{modelname+'...':<31}\t'
         logtxtbox.text(status_text)
         ds[modelname] = est.predict(X)

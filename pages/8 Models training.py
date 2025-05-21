@@ -134,9 +134,12 @@ def main(dft_path, n_iter):
     status_text = ''
     logtxtbox = st.empty()
     for modelname, selected_labels in loaded:
-        X = X_train.loc[:,selected_labels]
+        try:
+            X = X_train.loc[:,selected_labels]
+        except:
+            X = X_train.iloc[:,selected_labels]
         params = params_set[modelname]
-        status_text = status_text + f'{modelname+'...':<31}\t'
+        status_text = status_text + f'{modelname+'...':<31}\t '
         logtxtbox.text(status_text)
         clf = BayesSearchCV(models[modelname], params, cv=5, n_points=2, n_iter=n_iter, n_jobs=-1)
         clf.fit(X, y)
@@ -163,7 +166,10 @@ if (dft_path_option != "" and pkl_path_option != "") or (select_file_b and dft_p
         Accs = []
         Cs = []
         for i, est in enumerate(estimators):
-            X_test = X.loc[:,loaded[i][1]]
+            try:
+                X_test = X.loc[:,loaded[i][1]]
+            except:
+                X_test = X.iloc[:,loaded[i][1]]
             y_pred = est.predict(X_test)
             C = confusion_matrix(y_test,y_pred)
             Cs.append(C)

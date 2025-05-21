@@ -18,34 +18,55 @@ warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 patch_sklearn()
 
-def feature_selection_importance(X, y, model, cv=5, scoring='accuracy'):
-    if hasattr(model, 'feature_importances_'):
-        importance = model.feature_importances_
-    elif hasattr(model, 'coef_'):
-        importance = np.abs(model.coef_).flatten()
+def feature_selection_importance(X, y, model, max_features, use_model_based, selection_method, cv=5, scoring='accuracy'):
+    if use_model_based:
+        if hasattr(model, 'feature_importances_'):
+            importance = model.feature_importances_
+        elif hasattr(model, 'coef_'):
+            importance = np.abs(model.coef_).flatten()
+        else:
+            raise ValueError("Model does not have feature_importances_ or coef_ attribute.")
+
+        feature_indices = np.argsort(importance)[::-1]
+
+        if max_features == -1:
+            max_features = X.shape[1]
+
+        best_score = 0
+        best_features = []
+
+        def evaluate_features(selected_features):
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning)
+                X_selected = X.iloc[:, selected_features]
+                scores = cross_val_score(clone(model), X_selected, y, cv=cv, scoring=scoring)
+            return np.mean(scores), selected_features
+
+        results = Parallel(n_jobs=-1)(delayed(evaluate_features)(feature_indices[:i]) for i in tqdm(range(1, max_features + 1)))
+
+        for mean_score, selected_features in results:
+            if mean_score > best_score:
+                best_score = mean_score
+                best_features = selected_features
+
+        return best_features.tolist(), best_score
     else:
-        raise ValueError("Model does not have feature_importances_ or coef_ attribute.")
+        sfs = SFS(
+            model,
+            k_features=[(1, max_features), "best"][max_features == -1],
+            forward=selection_method == 'Forward',
+            floating=False,
+            verbose=1,
+            scoring=["accuracy","r2"][is_regression],
+            n_jobs=-1,
+            cv=5,
+        )
 
-    feature_indices = np.argsort(importance)[::-1]
-
-    best_score = 0
-    best_features = []
-
-    def evaluate_features(selected_features):
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=UserWarning)
-            X_selected = X.iloc[:, selected_features]
-            scores = cross_val_score(clone(model), X_selected, y, cv=cv, scoring=scoring)
-        return np.mean(scores), selected_features
-
-    results = Parallel(n_jobs=-1)(delayed(evaluate_features)(feature_indices[:i]) for i in tqdm(range(1, X.shape[1] + 1)))
-
-    for mean_score, selected_features in results:
-        if mean_score > best_score:
-            best_score = mean_score
-            best_features = selected_features
-
-    return best_features.tolist(), best_score
+        sfs = sfs.fit(X, y)
+        ft = sfs.k_feature_names_
+        best_score = sfs.k_score_
+        
+        return ft, best_score
 
 st.set_page_config(layout="wide")
 
@@ -76,7 +97,7 @@ with left:
         select_file_b = st.form_submit_button("Confirm", type="primary")
 
 @st.cache_resource(show_spinner=False)
-def main(dft_path,pkl_path):
+def main(dft_path,pkl_path,max_features):
     dft = pd.read_csv(dft_path)
     with open(pkl_path, 'rb') as f:
         if is_regression:
@@ -109,7 +130,7 @@ def main(dft_path,pkl_path):
     ret = []
 
     for (model_name, est) in models:
-        status_text = status_text + f"{model_name+'...':<31}\t"
+        status_text = status_text + f"{model_name+'...':<31}\t "
         logtxtbox.text(status_text)
         df_X = X.copy()
 
@@ -119,10 +140,15 @@ def main(dft_path,pkl_path):
                 feature_importances = pd.Series(est.feature_importances_, index=df_X.columns)
                 selected_features = feature_importances.nlargest(pre_selection_trees).index
                 df_X = df_X[selected_features]
+                est.fit(df_X, dfY.values.ravel())
             
+            max_features = min([max_features, len(df_X.columns)])
             ft, best_score = feature_selection_importance(df_X,
                                          y,
                                          est,
+                                         max_features,
+                                         use_model_based,
+                                         selection_method,
                                          cv=5,
                                          scoring=["accuracy","r2"][is_regression])
 
@@ -132,10 +158,15 @@ def main(dft_path,pkl_path):
                 skb.fit_transform(df_X, dfY.values.ravel())
                 ft = skb.get_feature_names_out()
                 df_X = df_X[ft]
+                est.fit(df_X, dfY.values.ravel())
             
+            max_features = min([max_features, len(df_X.columns)])
             ft, best_score = feature_selection_importance(df_X,
                                          y,
                                          est,
+                                         max_features,
+                                         use_model_based,
+                                         selection_method,
                                          cv=5,
                                          scoring=["accuracy","r2"][is_regression])
         else:
@@ -144,21 +175,17 @@ def main(dft_path,pkl_path):
                 skb.fit_transform(df_X, dfY.values.ravel())
                 ft = skb.get_feature_names_out()
                 df_X = df_X[ft]
+                est.fit(df_X, dfY.values.ravel())
 
-            sfs = SFS(
-                est,
-                k_features=[(1, max_features), "best"][max_features == -1],
-                forward=selection_method == 'Forward',
-                floating=False,
-                verbose=1,
-                scoring=["accuracy","r2"][is_regression],
-                n_jobs=-1,
-                cv=5,
-            )
-
-            sfs = sfs.fit(df_X, dfY.values.ravel())
-            ft = sfs.k_feature_names_
-            best_score = sfs.k_score_
+            max_features = min([max_features, len(df_X.columns)])
+            ft, best_score = feature_selection_importance(df_X,
+                                         y,
+                                         est,
+                                         max_features,
+                                         use_model_based=False,
+                                         selection_method=selection_method,
+                                         cv=5,
+                                         scoring=["accuracy","r2"][is_regression])
 
         status_text = status_text + f"Done! {len(ft)} features (cv score: {round(100*(best_score))}%)\n"
         logtxtbox.text(status_text)
@@ -175,9 +202,9 @@ if select_file_b:
 if (dft_path_option != "" and pkl_path_option != "") or (select_file_b and dft_path_option != "" and pkl_path_option != ""):
     with right:
         if is_regression:
-            models, scaler = main(dft_path, pkl_path)
+            models, scaler = main(dft_path, pkl_path, max_features)
         else:
-            models, scaler, le = main(dft_path, pkl_path)
+            models, scaler, le = main(dft_path, pkl_path, max_features)
 
     with st.form("my_form", clear_on_submit=False, border=False):
         Methods = [i for (i, _) in models]

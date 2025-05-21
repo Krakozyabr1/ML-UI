@@ -66,6 +66,37 @@ def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
 @st.cache_resource(show_spinner=False)
+def plotter(models,predictions,y_test):
+        columns2 = st.columns(2)
+        for i, name in enumerate(models):
+            with columns2[i % 2]:
+                fig, ax = plt.subplots(figsize=(7, 7))
+                y_pred = predictions[i]
+                if use_sig:
+                    y_pred = sigmoid(y_pred)
+                if use_round:
+                    y_pred = np.round(y_pred)
+                ax.scatter(y_test, y_pred)
+                sns.regplot(x=y_test, y=y_pred, scatter=False, line_kws={'linewidth': 3}, label='Regression Line')
+                ax.plot([min(y_test),max(y_test)], [min(y_pred),max(y_pred)], 'r--', linewidth=3, label='Ideal Line')
+                ax.legend()
+                ax.set_xlabel('Real Values')
+                ax.set_ylabel('Predicted Values')
+                plt.title(f'{name}\nR² Score: {Accs[i]*100:.2f}%')
+                st.pyplot(fig=fig)
+
+        fig, ax = plt.subplots(figsize=(10, 5))
+
+        plt.bar(Methods,Accs)
+
+        plt.xticks(rotation=90)
+        ax.set_title("Methods comparison")
+        ax.set_ylabel("R² Scores")
+        ax.set_ylim(0,1)
+        fig.tight_layout()
+        st.pyplot(fig=fig)
+
+@st.cache_resource(show_spinner=False)
 def main(dft_path, to_use, n_iter):
     if 'estimators' not in globals():
         estimators = []
@@ -122,14 +153,14 @@ def main(dft_path, to_use, n_iter):
         },
         {
             'criterion': ['squared_error', 'friedman_mse', 'absolute_error', 'poisson'],
-            'max_depth': (1, 200, 'uniform'),
+            'max_depth': (3, 20, 'uniform'),
         },
         [{
             'kernel': ['poly'],
             'C': (1e-3, 1e+3,'log-uniform'),
             'epsilon': (0.01, 0.3,'log-uniform'),
             'gamma': ['scale', 'auto', 0.1, 1],
-            'degree': (2, 5),
+            'degree': (2, 3),
         },
         {
             'C': (1e-3, 1e+3,'log-uniform'),
@@ -147,7 +178,7 @@ def main(dft_path, to_use, n_iter):
         {
             'learning_rate' : (0.1, 0.5, 'uniform'),
             'n_estimators' : (20, 100),
-            'max_depth' : (2, 40),
+            'max_depth' : (2, 10, 'uniform'),
         },
         # {
         #     'kernel': [RBF(), Matern(), RationalQuadratic()],
@@ -160,29 +191,32 @@ def main(dft_path, to_use, n_iter):
     logtxtbox = st.empty()
     for i, params in enumerate(params_set):
         if to_use[i]:
-            status_text = status_text + f'{models[i][0]+'...':<31}\t'
+            status_text = status_text + f'{models[i][0]+'...':<31}\t '
             logtxtbox.text(status_text)
-            clf = BayesSearchCV(models[i][1], params, cv=5, n_points=2, n_iter=n_iter, n_jobs=-1, scoring='r2')
+            if models[i][0] == 'SVR':
+                clf = BayesSearchCV(models[i][1], params, cv=5, n_points=1, n_iter=n_iter, n_jobs=1, scoring='r2')
+            else:
+                clf = BayesSearchCV(models[i][1], params, cv=5, n_points=2, n_iter=n_iter, n_jobs=-1, scoring='r2')
             clf.fit(X, y)
             estimators.append(clf.best_estimator_)
             status_text = status_text + f'Done! (cv score: {round(clf.best_score_*100)}%)\n'
 
     logtxtbox.text(status_text)
-    return estimators, [model for i, model in enumerate(models) if to_use[i]], X_test, y_test, yNames, scaler
+    predictions = [estimator.predict(X_test) for estimator in estimators]
+    return estimators, [model for i, model in enumerate(models) if to_use[i]], predictions, y_test, yNames, scaler
 
 if select_file_b:
     main.clear()
 
 if (dft_path_option != "" or (select_file_b and dft_path_option != "")) and sum(to_use) > 0:
     with right:
-        estimators, models, X_test, y_test, yNames, scaler = main(dft_path, to_use, n_iter)
+        estimators, models, predictions, y_test, yNames, scaler = main(dft_path, to_use, n_iter)
 
     with st.form("my_form", clear_on_submit=False, border=False):
         Methods = [i for i,_ in models]
         Accs = []
         
-        for i, est in enumerate(estimators):
-            y_pred = est.predict(X_test)
+        for y_pred in predictions:
             if use_sig:
                 y_pred = sigmoid(y_pred)
             if use_round:
@@ -197,34 +231,8 @@ if (dft_path_option != "" or (select_file_b and dft_path_option != "")) and sum(
                         )
         save_button = st.form_submit_button("Save selected", type="primary")
 
-    columns2 = st.columns(2)
-    for i, (name, _) in enumerate(models):
-        with columns2[i % 2]:
-            fig, ax = plt.subplots(figsize=(7, 7))
-            y_pred = estimators[i].predict(X_test)
-            if use_sig:
-                y_pred = sigmoid(y_pred)
-            if use_round:
-                y_pred = np.round(y_pred)
-            ax.scatter(y_test, y_pred)
-            sns.regplot(x=y_test, y=y_pred, scatter=False, line_kws={'linewidth': 3}, label='Regression Line')
-            ax.plot([min(y_test),max(y_test)], [min(y_pred),max(y_pred)], 'r--', linewidth=3, label='Ideal Line')
-            ax.legend()
-            ax.set_xlabel('Real Values')
-            ax.set_ylabel('Predicted Values')
-            plt.title(f'R² Score: {Accs[i]*100:.2f}%')
-            st.pyplot(fig=fig)
-
-    fig, ax = plt.subplots(figsize=(10, 5))
-
-    plt.bar(Methods,Accs)
-
-    plt.xticks(rotation=90)
-    ax.set_title("Methods comparison")
-    ax.set_ylabel("R² Scores")
-    ax.set_ylim(0,1)
-    fig.tight_layout()
-    st.pyplot(fig=fig)
+    modelnames = [modelname for (modelname, _) in models]
+    plotter(modelnames, predictions, y_test)
 
     if save_button:
         to_save = (scaler, [(Methods[i], estimators[i]) for i in range(len(Methods)) if selected_models[i]])

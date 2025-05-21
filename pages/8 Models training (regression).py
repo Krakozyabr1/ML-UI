@@ -58,7 +58,7 @@ def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
 @st.cache_resource(show_spinner=False)
-def main(dft_path):
+def main(dft_path, n_iter):
     if 'estimators' not in globals():
         estimators = []
 
@@ -105,8 +105,8 @@ def main(dft_path):
             'l1_ratio': (0,1, 'uniform'),
         },
         'DecisionTreeRegressor': {
-            'criterion': ['squared_error', 'friedman_mse', 'absolute_error', 'poisson'],
-            'max_depth': (1, 200, 'uniform'),
+            'criterion': ['squared_error', 'friedman_mse', 'poisson'],
+            'max_depth': (1, 20, 'uniform'),
         },
         'SVR': [{
             'kernel': ['poly'],
@@ -131,7 +131,7 @@ def main(dft_path):
         'XGBRegressor': {
             'learning_rate' : (0.1, 0.5, 'uniform'),
             'n_estimators' : (20, 100),
-            'max_depth' : (2, 40),
+            'max_depth' : (2, 10),
         },
         'GaussianProcessRegressor': {
             # 'kernel': [RBF(), Matern(), RationalQuadratic()],
@@ -143,9 +143,13 @@ def main(dft_path):
     status_text = ''
     logtxtbox = st.empty()
     for modelname, selected_labels in loaded:
-        X = X_train.loc[:,selected_labels]
+        # print(selected_labels)
+        try:
+            X = X_train.loc[:,selected_labels]
+        except:
+            X = X_train.iloc[:,selected_labels]
         params = params_set[modelname]
-        status_text = status_text + f'{modelname+'...':<31}\t'
+        status_text = status_text + f'{modelname+'...':<31}\t '
         logtxtbox.text(status_text)
         clf = BayesSearchCV(models[modelname], params, cv=5, n_points=2, n_iter=n_iter, n_jobs=-1, scoring='r2')
         clf.fit(X, y)
@@ -168,7 +172,10 @@ if (dft_path_option != "" and pkl_path_option != "") or (select_file_b and dft_p
         Accs = []
         
         for i, est in enumerate(estimators):
-            X_test = X.loc[:,loaded[i][1]]
+            try:
+                X_test = X.loc[:,loaded[i][1]]
+            except:
+                X_test = X.iloc[:,loaded[i][1]]
             y_pred = est.predict(X_test)
             if use_sig:
                 y_pred = sigmoid(y_pred)
@@ -188,7 +195,10 @@ if (dft_path_option != "" and pkl_path_option != "") or (select_file_b and dft_p
     for i, (name, _) in enumerate(loaded):
         with columns2[i % 2]:
             fig, ax = plt.subplots(figsize=(7, 7))
-            X_test = X.loc[:,loaded[i][1]]
+            try:
+                X_test = X.loc[:,loaded[i][1]]
+            except:
+                X_test = X.iloc[:,loaded[i][1]]
             y_pred = estimators[i].predict(X_test)
             if use_sig:
                 y_pred = sigmoid(y_pred)
