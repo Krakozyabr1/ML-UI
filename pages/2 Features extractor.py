@@ -1,29 +1,42 @@
-from pyedflib import highlevel
+from functions.read_edf import readedf
 import streamlit as st
 import pandas as pd
-import numpy as np
 import warnings
 import time
 import os
-from functions.functions import *
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-@st.cache_resource
-def readedf(selected_file):
-    signals, signal_headers, header = highlevel.read_edf(selected_file)
-    sig_labels = [x["label"] for x in signal_headers]
-    fs = signal_headers[0]["sample_frequency"]
-    t = np.arange(len(signals[0])) / fs
-    selected_labels = [False] * len(sig_labels)
-    return signals, signal_headers, header, sig_labels, fs, t, selected_labels
-
-
 st.set_page_config(layout="wide")
+PAGE_NAME = "Feature extractor"
+
+def _reset_pre_selection_page_state():
+    if st.session_state.get('last_active_page') != PAGE_NAME:
+        st.session_state.df_path_confirmed = False
+        st.session_state.pkl_path_confirmed = False
+        st.session_state.current_df_path = ""
+        st.session_state.current_pkl_path = ""
+        st.session_state.current_analysis_type = "Classification"
+        st.session_state.current_to_use_models = []
+        st.session_state.calculation_triggered = False
+
+_reset_pre_selection_page_state()
+st.session_state['last_active_page'] = PAGE_NAME
+
+@st.cache_resource
+def call_readedf(selected_file):
+    return readedf(selected_file)
+
 
 left, right = st.columns(2)
 with left:
+    signal_type = st.selectbox('Signals type', options=['EEG', 'ECG', 'CRG'])
+    corr_wavelet = {'EEG': (2, 7),
+                    'ECG': (3, 4),
+                    'CRG': (8, 3)
+                    }
+    
     with st.form("file_selector_form", clear_on_submit=False):
         learning_check = st.checkbox('Learning', value=True)
         s_dir = st.text_input("Select .edf files directory:", value="").replace('"', "")
@@ -44,13 +57,13 @@ with left:
                 st.text_input("Files to read from each folder (ignore if not learning):", value="10")
             )
         
-        saveto_name = st.text_input("Select output .csv file name:", value="crg_features").replace('.csv', "")
+        saveto_name = st.text_input("Select output .csv file name:", value="features").replace('.csv', "")
         if learning_check:
             saveto = os.path.join(os.path.dirname(__file__), "..", f"Features/Learning/{saveto_name}.csv")
         else:
             saveto = os.path.join(os.path.dirname(__file__), "..", f"Features/ToClassify/{saveto_name}.csv")
 
-        wlt = st.selectbox("Select wavelet:", index=8, options=[
+        wlt = st.selectbox("Select wavelet:", index=corr_wavelet[signal_type][0], options=[
                             'haar',
                             'db1', 'db2', 'db3', 'db4', 'db5', 'db6', 'db7', 'db8', 'db9', 'db10', 'db11', 'db12', 'db13', 'db14', 'db15', 'db16', 'db17', 'db18', 'db19',
                             'db20', 'db21', 'db22', 'db23', 'db24', 'db25', 'db26', 'db27', 'db28', 'db29', 'db30', 'db31', 'db32', 'db33', 'db34', 'db35', 'db36', 'db37', 'db38',
@@ -67,17 +80,18 @@ with left:
                             'fbsp',
                             'cmor',
                             ])
-        wlt_level = int(st.text_input("Level:", value="3"))
-
+        wlt_level = int(st.text_input("Level:", value=f"{corr_wavelet[signal_type][1]}"))
+        
         select_file_b = st.form_submit_button("Confirm", type="primary")
+        
 
 if s_dir != "":
     if learning_check:
-        signals, signal_headers, header, labels, fs, t, selected_labels = readedf(
+        signals, signal_headers, header, labels, fs, t, selected_labels = call_readedf(
             dirs[0] + "\\" + os.listdir(dirs[0])[0]
         )
     else:
-        signals, signal_headers, header, labels, fs, t, selected_labels = readedf(
+        signals, signal_headers, header, labels, fs, t, selected_labels = call_readedf(
             s_dir + "\\" + os.listdir(s_dir)[0]
         )
 
@@ -89,7 +103,7 @@ with right:
                 with cols[i % 3]:
                     selected_labels[i] = st.checkbox(
                         label,
-                        value=("CRG" in label),
+                        value=(signal_type in label),
                     )
         analyze_b = st.form_submit_button("Calculate", type="primary")
 
@@ -99,62 +113,58 @@ for check in [s_dir, filestoread]:
         is_ready = False
         break
 
-if is_ready:
-    if analyze_b:
-        with right:
-            logtxtbox = st.empty()
-            if learning_check:
-                M = []
-                for class_ in classes:
-                    M.extend([class_] * filestoread)
+if is_ready and analyze_b:
+    with right:
+        logtxtbox = st.empty()
+        if learning_check:
+            M = []
+            for class_ in classes:
+                M.extend([class_] * filestoread)
 
-            if learning_check:
-                ls = []
-                for dir_ in dirs:
-                    ls.extend([dir_ + i for i in os.listdir(dir_)][0:filestoread])
-            else:
-                ls = os.listdir(s_dir)
-            
-            total_files = len(ls)
-            start_time = time.time()
+        if learning_check:
+            ls = []
+            for dir_ in dirs:
+                ls.extend([dir_ + i for i in os.listdir(dir_)][0:filestoread])
+        else:
+            ls = os.listdir(s_dir)
+        
+        total_files = len(ls)
+        start_time = time.time()
 
-            filters = create_hr_filters(fs)
+        match signal_type:
+            case 'EEG':
+                import functions.eeg_analysis as analysis
+            case 'ECG':
+                import functions.ecg_analysis as analysis
+            case 'CRG':
+                import functions.crg_analysis as analysis
 
-            def myfun(e, i, start_time, labels, filters, total_files, wlt, wlt_level):
-                signals, _, _ = highlevel.read_edf(i)
+        filters = analysis.create_filters(fs)
 
-                datarow = {label: signals[i] for i, label in enumerate(labels) if selected_labels[i] and 'interp' not in label}
-                datarow2 = {label: signals[i] for i, label in enumerate(labels) if selected_labels[i] and 'interp' in label}
-
-                val, param_name = hr_analyser(datarow)
-                val2, param_name2 = hr_interp_analyser(datarow2, fs, filters, wlt, wlt_level)
-                val = val + val2
-                param_name = param_name + param_name2
-                _ = progress_tracker(logtxtbox, time.time(), start_time, e + 1, total_files)
-                return {param_name[j]: val[j] for j in range(len(param_name))}
-
-            if learning_check:
-                ds = [
-                        myfun(e, i, start_time, labels, filters, total_files, wlt, wlt_level)
-                        for e, i in enumerate(ls)
-                    ]
-            else:
-                ds = [
-                    myfun(e, s_dir+'\\'+i, start_time, labels, filters, total_files, wlt, wlt_level)
+        if learning_check:
+            ds = [
+                    analysis.generate_features_table(e, i, start_time, labels, filters, total_files,
+                                                         wlt, wlt_level, fs, selected_labels, logtxtbox)
                     for e, i in enumerate(ls)
                 ]
+        else:
+            ds = [
+                analysis.generate_features_table(e, s_dir+'\\'+i, start_time, labels, filters, total_files, 
+                                                     wlt, wlt_level, fs, selected_labels, logtxtbox)
+                for e, i in enumerate(ls)
+            ]
 
-            df = pd.DataFrame(ds)
-            if learning_check:
-                df["Label"] = M
-            else:
-                df["Name"] = [x[:-4] for x in ls]
-            df.to_csv(saveto, columns=df.columns, header=df.columns, index=False)
+        df = pd.DataFrame(ds)
+        if learning_check:
+            df["Label"] = M
+        else:
+            df["Name"] = [x[:-4] for x in ls]
+        df.to_csv(saveto, columns=df.columns, header=df.columns, index=False)
 
-            elap = time.time() - start_time
-            elap_h = elap // 3600
-            elap_m = elap // 60 - 60 * elap_h
-            elap_s = elap % 60
-            st.text(f"Done! Time Elapsed: {elap_h:02.0f}:{elap_m:02.0f}:{elap_s:02.0f}")
-            
-        st.dataframe(df, column_config={x: st.column_config.NumberColumn(format="%.3e") for x in df.columns[:-1]})
+        elap = time.time() - start_time
+        elap_h = elap // 3600
+        elap_m = elap // 60 - 60 * elap_h
+        elap_s = elap % 60
+        st.text(f"Done! Time Elapsed: {elap_h:02.0f}:{elap_m:02.0f}:{elap_s:02.0f}")
+
+    st.dataframe(df, column_config={x: st.column_config.NumberColumn(format="%.3e") for x in df.columns[:-1]})

@@ -1,136 +1,132 @@
-from scipy.signal import spectrogram, buttord, butter, sosfilt
+from mlxtend.feature_selection import SequentialFeatureSelector as SFS
+from sklearn.feature_selection import SelectKBest, f_classif
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import cross_val_score
+from sklearn.metrics import ConfusionMatrixDisplay
+from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import LabelEncoder
-from sklearn.impute import KNNImputer
-from pywt import wavedec, dwt
-from scipy import fft, signal
-from statistics import mode
-import scipy.stats as sst
-from math import log2
+from joblib import Parallel, delayed
+from skopt import BayesSearchCV
+import matplotlib.pyplot as plt
+from sklearn.base import clone
+import streamlit as st
+from tqdm import tqdm
+import seaborn as sns
 import pandas as pd
 import numpy as np
+import warnings
 
 
-def sgram_part(
-    sig,
-    fs,
-    win_width,
-    frs,
-    overlap=0,
-    window='hann',
-):
-    f, t, Sxx = spectrogram(
-        sig,
-        fs=fs,
-        nperseg=int(fs * win_width),
-        noverlap=int(fs * win_width * overlap / 100),
-        window=window,
-    )
-
-    if frs[1] < 0:
-        f_indices = np.where(f >= frs[0])[0]
-    else:
-        f_indices = np.where((f >= frs[0]) & (f <= frs[1]))[0]
-
-    f = f[f_indices]
-    Sxx = Sxx[f_indices, :]
-
-    PSD = np.mean(Sxx, axis=0)
-
-    return f, t, Sxx, PSD
-
-
-def spear(dfX, dfY):
-    labels = np.unique(np.array(dfY))
-    dfYs = [pd.Series((dfY == label).astype(int)) for label in labels]
-    names = np.array(dfX.columns)
-    ret = []
-    for i in names:
-        if dfX[i].nunique() == 1:
-            print(f"{i} - constant")
-            ret.append(0)
+def feature_selection_importance(X, y, model, max_features, use_model_based, selection_method, is_regression, cv=5, scoring='accuracy'):
+    if use_model_based:
+        if hasattr(model, 'feature_importances_'):
+            importance = model.feature_importances_
+        elif hasattr(model, 'coef_'):
+            importance = np.abs(model.coef_).flatten()
         else:
-            r = [abs(sst.spearmanr(dfX.loc[:, i], dfY).statistic) for dfY in dfYs]
-            ret.append(np.mean(r))
+            raise ValueError("Model does not have feature_importances_ or coef_ attribute.")
 
-    sorted_names, sorted_ret = zip(*sorted(zip(ret, names), reverse=True))     
-    return list(sorted_names), list(sorted_ret)
+        feature_indices = np.argsort(importance)[::-1]
 
+        if max_features == -1:
+            max_features = X.shape[1]
 
-def r_peaks(ecg,fs,maxiter=100):
-  sos = signal.butter(15, [1, 20], btype='bandpass', fs=fs, output="sos")
-  ecg_prep = signal.sosfilt(sos, ecg)
-  y = signal.filtfilt([50/fs]*int(fs/50), 1, ecg_prep)
-  t = np.arange(len(y))/fs
+        best_score = 0
+        best_features = []
 
-  [_, cD] = dwt(y,'sym3')
-  fs_c = fs*len(cD)/len(y)
-  t_c = np.linspace(0,max(t),len(cD))
+        def evaluate_features(selected_features):
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning)
+                X_selected = X.iloc[:, selected_features]
+                scores = cross_val_score(clone(model), X_selected, y, cv=cv, scoring=scoring)
+            return np.mean(scores), selected_features
 
-  cD2 = signal.medfilt(cD*cD,11)
-  cD2 /= max(cD2)
-  
-  win_l = int(fs_c)
-  for j in range(0,len(cD2)-win_l,int(win_l/2)):
-    cD2[j:j+win_l] = cD2[j:j+win_l]/max(cD2[j:j+win_l])
+        results = Parallel(n_jobs=-1)(delayed(evaluate_features)(feature_indices[:i]) for i in tqdm(range(1, max_features + 1)))
 
-  
-  locs = signal.find_peaks(cD2,height=0.5,distance=int(0.3*fs_c))
-  locs = np.array([int(x/fs_c*fs) for x in locs[0]])
+        for mean_score, selected_features in results:
+            if mean_score > best_score:
+                best_score = mean_score
+                best_features = selected_features
 
-  locs_tmp = locs.copy()
-  locs_array = []
-  locs_array.append(locs.copy())
-
-  eq = False
-  win_l = int(np.min(locs[1:-1]-locs[0:-2])/1.5)
-  for j in range(maxiter):
-    for i, loc in enumerate(locs[1:]):
-      if locs[i]-locs[i-1] > np.mean(locs[1:]-locs[0:-1])*1.5:
-        locs = np.append(locs,int((locs[i]+locs[i-1])/2))
-        locs = np.sort(locs)
-    
-    for locs_in_arr in locs_array:
-      if np.array_equal(locs_in_arr,locs):
-        eq = True
-        break
-    if eq:
-      break
-    if np.array_equal(locs_tmp,locs):
-      break
+        return best_features.tolist(), best_score
     else:
-      locs_array.append(locs.copy())
-      locs_tmp = locs
+        sfs = SFS(
+            model,
+            k_features=[(1, max_features), "best"][max_features == -1],
+            forward=selection_method == 'Forward',
+            floating=False,
+            verbose=1,
+            scoring=["accuracy","r2"][is_regression],
+            n_jobs=-1,
+            cv=5,
+        )
 
-  locs_tmp = locs.copy()
-  locs_array = []
-  locs_array.append(locs.copy())
+        sfs = sfs.fit(X, y)
+        ft = sfs.k_feature_names_
+        best_score = sfs.k_score_
+        
+        return ft, best_score
 
-  eq = False
-  win_l = int(np.min(locs[1:-1]-locs[0:-2])/1.25)
-  for j in range(maxiter):
-    for i, loc in enumerate(locs):
-      win_start = max([0,loc-int(win_l/2)])
-      win_stop = min([len(ecg),loc+int(win_l/2)])
-      locs[i] = np.argmax(ecg[win_start:win_stop])+win_start
+
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
+
+def regression_plotter(columns2, predictions, y_test, Methods, Accs, use_sig, use_round):
+        for i, name in enumerate(Methods):
+            with columns2[i % 2]:
+                fig, ax = plt.subplots(figsize=(7, 7))
+                y_pred = predictions[i]
+                if use_sig:
+                    y_pred = sigmoid(y_pred)
+                if use_round:
+                    y_pred = np.round(y_pred)
+                ax.scatter(y_test, y_pred)
+                sns.regplot(x=y_test, y=y_pred, scatter=False, line_kws={'linewidth': 3}, label='Regression Line')
+                ax.plot([min(y_test),max(y_test)], [min(y_pred),max(y_pred)], 'r--', linewidth=3, label='Ideal Line')
+                ax.legend()
+                ax.set_xlabel('Real Values')
+                ax.set_ylabel('Predicted Values')
+                plt.title(f'{name}\nR² Score: {Accs[i]*100:.2f}%')
+                st.pyplot(fig=fig)
+
+        fig, ax = plt.subplots(figsize=(10, 5))
+
+        plt.bar(Methods,Accs)
+
+        plt.xticks(rotation=90)
+        ax.set_title("Methods comparison")
+        ax.set_ylabel("R² Scores")
+        ax.set_ylim(0,1)
+        fig.tight_layout()
+        st.pyplot(fig=fig)
+
+
+def classification_plotter(columns2, Methods, Cs, yNames, Accs, cmap):
     
-    for locs_in_arr in locs_array:
-      if np.array_equal(locs_in_arr,locs):
-        eq = True
-        break
-    if eq:
-      break
-    if np.array_equal(locs_tmp,locs):
-      break
-    else:
-      locs_array.append(locs.copy())
-      locs_tmp = locs
+    for i, (name, C) in enumerate(zip(Methods, Cs)):
+        with columns2[i % 2]:
+            fig, ax = plt.subplots(figsize=(7, 7))
+            disp = ConfusionMatrixDisplay(confusion_matrix=C,display_labels=np.unique(yNames))
+            disp.plot(ax=ax,colorbar=False,cmap=cmap)
+            Acc = C.diagonal()/C.sum(axis=1)
+            accs_txt = f'{name}: '
+            for yName in range(len(np.unique(yNames))):
+                accs_txt = accs_txt + f'{round(Acc[yName]*100)}% '
+            accs_txt = accs_txt + f'({np.mean(Acc)*100:.2f}%)'
+            plt.title(accs_txt)
+            st.pyplot(fig=fig)
 
-  locs = np.sort(np.unique(locs))
-  time_locs = locs/fs
-  RR = time_locs[1:] - time_locs[0:-1]
-  RR = np.round(RR,3)
+    fig, ax = plt.subplots(figsize=(10, 5))
 
-  return locs, time_locs, RR
+    plt.bar(Methods, Accs)
+
+    plt.xticks(rotation=90)
+    ax.set_title("Methods comparison")
+    ax.set_ylabel("Accuracy")
+    ax.set_ylim(0,1)
+    fig.tight_layout()
+    st.pyplot(fig=fig)
 
 
 def zeros_remover(df, labels=False):
@@ -237,495 +233,90 @@ def outliers_remover(df, max_iterations=5, labels=False):
     return df
 
 
-def mode(x):
-    values, counts = np.unique(x, return_counts=True)
-    return values[counts.argmax()]
+def read_and_prepare(df_path):
+    df = pd.read_csv(df_path)
+    df = null_remover(df)
+    df = nan_remover(df)
+    # df = outliers_remover(df)
+    return df
 
 
-def skewness(data):
-    if len(data) < 3:
-        return 0
-    mean = data.mean()
-    m3 = np.sum((data - mean) ** 3) / len(data)
-    std3 = data.std() ** 3
-    if std3 == 0:
-        return 0
-    return m3 / std3
+def prepare_data_1(df_path, pre_selected_num, to_encode=False):
+    estimators = []
 
+    df = read_and_prepare(df_path)
+    labels = df.columns
+    class_label = labels[-1]
+    yNames = np.unique(np.array(df[class_label]))
 
-def kurtosis(data):
-    if len(data) < 4:
-        return 0
-    centered_data = data - data.mean()
-    squared_deviations = centered_data**2
-    variance_sq = squared_deviations.mean() ** 2
-    if variance_sq == 0:
-        return 0
-    fourth_moment = np.mean(centered_data**4)
-    return fourth_moment / variance_sq - 3
+    y = np.array(df[class_label])
+    dfX = df[labels[:-1]]
+    scaler = StandardScaler()
+    scaler.fit(dfX)
+    scaled = scaler.transform(dfX).T
+    feature_names_out = scaler.get_feature_names_out(labels[:-1])
 
+    if to_encode:
+        le = LabelEncoder()
+        y = le.fit_transform(y)
 
-def time_params(sig, name, ent=False):
-    diff = sig[1:-1] - sig[0:-2]
-    ret = []
-    names = []
+    dfX = pd.DataFrame({feature_names_out[i]: scaled[i] for i in range(len(feature_names_out))})
+    dfY = pd.DataFrame(data=y, columns=[class_label])
 
-    ret.append(sig.mean())
-    names.append(f"{name} mean")
-    ret.append(sig.std())
-    names.append(f"{name} std")
-    ret.append(diff.std())
-    names.append(f"{name} diff std")
-    ret.append(np.sqrt((sig**2).mean()))
-    names.append(f"{name} RMS")
-    ret.append(np.cov(sig))
-    names.append(f"{name} covmat")
-    ret.append(mode(sig))
-    names.append(f"{name} mode")
-    ret.append(kurtosis(sig))
-    names.append(f"{name} kurt")
-    ret.append(skewness(sig))
-    names.append(f"{name} skew")
-    if ent:
-        new_vals, new_names = entropy_params(sig, name)
-        ret = ret + new_vals
-        names = names + new_names
+    if pre_selected_num != -1:
+        skb = SelectKBest(f_classif, k=pre_selected_num)
+        skb.fit_transform(dfX, dfY.values.ravel())
+        ft = skb.get_feature_names_out()
+        dfX = dfX[ft]
 
-    return ret, names
+    if to_encode:
+        X, X_test, y, y_test = train_test_split(dfX, y, test_size=0.2, stratify=y)
+    else:
+        X, X_test, y, y_test = train_test_split(dfX, y, test_size=0.2)
 
+    if to_encode:
+        return X, X_test, y, y_test, estimators, yNames, scaler, le
+    else:
+        return X, X_test, y, y_test, estimators, yNames, scaler
+        
 
-def eeg_freq_params(sig, fs, name):
-    L = len(sig)
-    sig_fft = abs(fft.fft(sig))[: int(L / 2)] * 2 / L
-    freq = fft.fftfreq(len(sig), d=1 / fs)[: int(L / 2)]
-    delta = sig_fft[np.where(np.logical_and(freq >= 1, freq < 4))] ** 2
-    theta = sig_fft[np.where(np.logical_and(freq >= 4, freq < 8))] ** 2
-    alpha = sig_fft[np.where(np.logical_and(freq >= 8, freq < 12))] ** 2
-    beta1 = sig_fft[np.where(np.logical_and(freq >= 12, freq < 20))] ** 2
-    beta2 = sig_fft[np.where(np.logical_and(freq >= 20, freq < 30))] ** 2
-    gamma1 = sig_fft[np.where(np.logical_and(freq >= 30, freq < 60))] ** 2
-    gamma2 = sig_fft[np.where(np.logical_and(freq >= 60, freq < 100))] ** 2
-    all = sig_fft**2
-    sum_all = sum(all)
+def models_tuning_1(df_path, to_use, n_iter, pre_selected_num, analysis_type):
 
-    ret = []
-    names = []
+    if analysis_type == 'Classification':
+        from functions.classification_config import CLASSIFICATION_PARAMS_SET, CLASSIFICATION_MODELS
+        params_set = CLASSIFICATION_PARAMS_SET
+        models = CLASSIFICATION_MODELS
 
-    ret.append(sum(delta) / sum_all / len(delta))
-    names.append(f"{name} delta/all en")
-    ret.append(sum(theta) / sum_all / len(theta))
-    names.append(f"{name} theta/all en")
-    ret.append(sum(alpha) / sum_all / len(alpha))
-    names.append(f"{name} alpha/all en")
-    ret.append(sum(beta1) / sum_all / len(beta1))
-    names.append(f"{name} beta1/all en")
-    ret.append(sum(beta2) / sum_all / len(beta2))
-    names.append(f"{name} beta2/all en")
-    ret.append(sum(gamma1) / sum_all / len(gamma1))
-    names.append(f"{name} gamma1/all en")
-    ret.append(sum(gamma2) / sum_all / len(gamma2))
-    names.append(f"{name} gamma2/all en")
-    ret.append(sum(alpha) / sum(beta1) / len(alpha) * len(beta1))
-    names.append(f"{name} alpha/beta1 en")
-    ret.append(sum(alpha) / sum(beta2) / len(alpha) * len(beta2))
-    names.append(f"{name} alpha/beta2 en")
-    ret.append(sum(alpha) / (sum(beta1) + sum(beta2)) / len(alpha) * (len(beta1) + len(beta2)))
-    names.append(f"{name} alpha/(beta1+beta2) en")
+        X, X_test, y, y_test, estimators, yNames, scaler, le = prepare_data_1(df_path, pre_selected_num, to_encode=True)
 
-    ret.append(delta.mean())
-    names.append(f"{name} mean delta en")
-    ret.append(theta.mean())
-    names.append(f"{name} mean theta en")
-    ret.append(alpha.mean())
-    names.append(f"{name} mean alpha en")
-    ret.append(beta1.mean())
-    names.append(f"{name} mean beta1 en")
-    ret.append(beta2.mean())
-    names.append(f"{name} mean beta2 en")
-    ret.append(gamma1.mean())
-    names.append(f"{name} mean gamma1 en")
-    ret.append(gamma2.mean())
-    names.append(f"{name} mean gamma2 en")
-    ret.append(all.mean())
-    names.append(f"{name} mean all en")
-
-    return ret, names
-
-
-def hr_freq_params(sig, fs, name):
-    L = len(sig)
-    sig_fft = abs(fft.fft(sig))[: int(L / 2)] * 2 / L
-    freq = fft.fftfreq(len(sig), d=1 / fs)[: int(L / 2)]
-
-    HF = sig_fft[np.where(np.logical_and(freq >= 0.15, freq < 0.4))] ** 2
-    LF = sig_fft[np.where(np.logical_and(freq >= 0.04, freq < 0.15))] ** 2
-    VLF = sig_fft[np.where(np.logical_and(freq >= 0.015, freq < 0.04))] ** 2
-    ULF = sig_fft[np.where(freq < 0.015)] ** 2
-    VHF = sig_fft[np.where(freq >= 0.4)] ** 2
-    all = sig_fft**2
-    sum_all = sum(all)
-
-    ret = []
-    names = []
-
-    ret.append(sum(HF) / sum_all / len(HF))
-    names.append(f"{name} HF/all en")
-    ret.append(sum(LF) / sum_all / len(LF))
-    names.append(f"{name} LF/all en")
-    ret.append(sum(VLF) / sum_all / len(VLF))
-    names.append(f"{name} VLF/all en")
-    ret.append(sum(ULF) / sum_all / len(ULF))
-    names.append(f"{name} ULF/all en")
-    ret.append(sum(VHF) / sum_all / len(VLF))
-    names.append(f"{name} VHF/all en")
-    ret.append(sum(VLF) / sum(ULF) / len(VLF) * len(ULF))
-    names.append(f"{name} VLF/ULF en")
-    ret.append(sum(VLF) / sum(VHF) / len(VLF) * len(VHF))
-    names.append(f"{name} VLF/VHF en")
-    ret.append(sum(VHF) / (sum(ULF) + sum(VLF)) / len(VHF) * (len(ULF) + len(VLF)))
-    names.append(f"{name} VHF/(ULF+VLF) en")
-
-    ret.append(HF.mean())
-    names.append(f"{name} mean HF en")
-    ret.append(LF.mean())
-    names.append(f"{name} mean LF en")
-    ret.append(VLF.mean())
-    names.append(f"{name} mean VLF en")
-    ret.append(ULF.mean())
-    names.append(f"{name} mean ULF en")
-    ret.append(VHF.mean())
-    names.append(f"{name} mean VHF en")
-    ret.append(all.mean())
-    names.append(f"{name} mean all en")
-
-    return ret, names
-
-
-def ecg_freq_params(sig, fs, name):
-    L = len(sig)
-    sig_fft = abs(fft.fft(sig))[: int(L / 2)] * 2 / L
-    freq = fft.fftfreq(len(sig), d=1 / fs)[: int(L / 2)]
-
-    PLI = sig_fft[np.where(np.logical_and(freq >= 49, freq <= 51))] ** 2
-    PT = sig_fft[np.where(np.logical_and(freq >= 1, freq <= 10))] ** 2
-    MOT = sig_fft[np.where(np.logical_and(freq >= 3, freq <= 10))] ** 2
-    QRS = sig_fft[np.where(np.logical_and(freq >= 2, freq <= 22))] ** 2
-    MF = sig_fft[np.where(np.logical_and(freq >= 10, freq <= 49))] ** 2
-    BW = sig_fft[np.where(freq <= 0.5)] ** 2
-    HF = sig_fft[np.where(freq >= 50)] ** 2
-    EMG = sig_fft[np.where(freq >= 10)] ** 2
-    all = sig_fft**2
-    sum_all = sum(all)
-
-    ret = []
-    names = []
-
-    ret.append(sum(PLI) / sum_all / len(PLI))
-    names.append(f"{name} PLI/all en")
-    ret.append(sum(PT) / sum_all / len(PT))
-    names.append(f"{name} P/T/all en")
-    ret.append(sum(MOT) / sum_all / len(MOT))
-    names.append(f"{name} Motion/all en")
-    ret.append(sum(QRS) / sum_all / len(QRS))
-    names.append(f"{name} QRS/all en")
-    ret.append(sum(MF) / sum_all / len(MF))
-    names.append(f"{name} MF/all en")
-    ret.append(sum(BW) / sum_all / len(BW))
-    names.append(f"{name} BW/all en")
-    ret.append(sum(HF) / sum_all / len(HF))
-    names.append(f"{name} HF/all en")
-    ret.append(sum(EMG) / sum_all / len(EMG))
-    names.append(f"{name} EMG/all en")
-
-    ret.append(PLI.mean())
-    names.append(f"{name} PLI mean en")
-    ret.append(PT.mean())
-    names.append(f"{name} P/T mean en")
-    ret.append(MOT.mean())
-    names.append(f"{name} Motion mean en")
-    ret.append(QRS.mean())
-    names.append(f"{name} QRS mean en")
-    ret.append(MF.mean())
-    names.append(f"{name} MF mean en")
-    ret.append(BW.mean())
-    names.append(f"{name} BW mean en")
-    ret.append(HF.mean())
-    names.append(f"{name} HF mean en")
-    ret.append(EMG.mean())
-    names.append(f"{name} EMG mean en")
-    ret.append(all.mean())
-    names.append(f"{name} all mean en")
-
-    return ret, names
-
-
-def wave_params(sig, name, ent, wlt, level):
-    cA, *cDs = wavedec(sig, wlt, level=level)
-    ret = []
-    names = []
-
-    en_sum = 0
-    for i, cD in enumerate(cDs[::-1], start=1):
-        cDen = sum(cD**2) / len(cD)
-        ret.append(cDen)
-        names.append(f"{name} cD{i} energy")
-        en_sum = en_sum + cDen
+    elif analysis_type == 'Regression':
+        from functions.regression_config import REGRESSION_PARAMS_SET, REGRESSION_MODELS
+        params_set = REGRESSION_PARAMS_SET
+        models = REGRESSION_MODELS
     
-    cAen = sum(cA**2) / len(cA)
-    ret.append(cAen)
-    names.append(f"{name} cA{level} energy")
-    en_sum = en_sum + cAen
+        X, X_test, y, y_test, estimators, yNames, scaler = prepare_data_1(df_path, pre_selected_num, to_encode=False)
 
-    for i, cD in enumerate(cDs[::-1], start=1):
-        cDrelen = sum(cD**2) / len(cD) / en_sum
-        ret.append(cDrelen)
-        names.append(f"{name} cD{i} rel energy")
+    status_text = ''
+    logtxtbox = st.empty()
+    for i, (name, model) in enumerate(models.items()):
+        if to_use[i]:
+            status_text = status_text + f'{name+'...':<31}\t '
+            logtxtbox.text(status_text)
+            if analysis_type == 'Classification':
+                clf = BayesSearchCV(model, params_set[name], cv=5, n_points=2, n_iter=n_iter, n_jobs=-1)
+            elif analysis_type == 'Regression':
+                if name == 'SVR':
+                    clf = BayesSearchCV(model, params_set[name], cv=5, n_points=1, n_iter=n_iter, n_jobs=1, scoring='r2')
+                else:
+                    clf = BayesSearchCV(model, params_set[name], cv=5, n_points=2, n_iter=n_iter, n_jobs=-1, scoring='r2')
+            clf.fit(X, y)
+            estimators.append(clf.best_estimator_)
+            status_text = status_text + f'Done! (cv score: {round(clf.best_score_*100)}%)\n'
 
-    cArelen = cAen / en_sum
-    ret.append(cArelen)
-    names.append(f"{name} cA{level} rel energy")
+    logtxtbox.text(status_text)
+    predictions = [estimator.predict(X_test) for estimator in estimators]
 
-    for i, cD in enumerate(cDs[::-1], start=1):
-        rt, nt = time_params(cD, name, ent)
-        ret = ret + rt
-        names = names + [f"cD{i} {x}" for x in nt]
-
-    rt, nt = time_params(cA, name, ent)
-    ret = ret + rt
-    names = names + [f"cA{level} {x}" for x in nt]
-
-    return ret, names
-
-
-def create_filter(wp, ws, fs, btype="bandpass"):
-    sgord, wn = buttord(wp, ws, 3, 60, fs=fs)
-    sos = butter(sgord, wn, btype=btype, fs=fs, output="sos")
-    return sos
-
-
-def create_eeg_filters(fs, rhythms=range(7)):
-    ws = [[1, 4], [4, 8], [8, 12], [12, 20], [20, 30], [30, 60], [60, 100]]
-    filters = []
-    for i in rhythms:
-        ww = ws[i]
-        wwp = np.mean(ww) / 10
-        filters.append(create_filter(ww, [ww[0] - wwp, ww[1] + wwp], fs))
-    return filters
-
-
-def create_hr_filters(fs, rhythms=range(4)):
-    ws = [[0.15, 0.4], [0.04, 0.15], [0.015, 0.04], 0.015, 0.4]
-    rts = ["HF", "LF", "VLF", "ULF", "VHF"]
-    filters = []
-    for i in rhythms:
-        ww = ws[i]
-        if rts[i] == "ULF":
-            wwp = ww / 10
-            filters.append(create_filter(ww, ww + wwp, fs, btype="lowpass"))
-        elif rts[i] == "VHF":
-            wwp = ww / 10
-            filters.append(create_filter(ww, ww - wwp, fs, btype="highpass"))
-        else:
-            wwp = np.mean(ww) / 10
-            filters.append(create_filter(ww, [ww[0] - wwp, ww[1] + wwp], fs))
-    return filters
-
-
-def create_ecg_filters(fs, rhythms=range(8)):
-    ws = [[1, 10], [3, 10], [2, 22], [10, 49], [49, 51], 0.5, 10, 50]
-    rts = ["PLI", "P/T", "Motion", "QRS", "MF", "BW", "HF", "EMG"]
-    filters = []
-    for i in rhythms:
-        ww = ws[i]
-        if rts[i] == "BW":
-            wwp = ww / 10
-            filters.append(create_filter(ww, ww + wwp, fs, btype="lowpass"))
-        elif rts[i] in ["HF", "EMG"]:
-            wwp = ww / 10
-            filters.append(create_filter(ww, ww - wwp, fs, btype="highpass"))
-        else:
-            wwp = np.mean(ww) / 10
-            filters.append(create_filter(ww, [ww[0] - wwp, ww[1] + wwp], fs))
-    return filters
-
-
-def eeg_rhythms(sig, name, filters, ent, rhythms=range(7)):
-    rts = ["delta", "theta", "alpha", "beta1", "beta2", "gamma1", "gamma2"]
-    ret = []
-    names = []
-    for i in rhythms:
-        sos = filters[i]
-        f = sosfilt(sos, sig)
-        r, n = time_params(f, f"{name} {rts[i]}", ent)
-        ret = ret + r
-        names = names + n
-
-    return ret, names
-
-
-def hr_rhythms(sig, name, filters, ent, rhythms=range(4)):
-    rts = ["HF", "LF", "VLF", "ULF", "VHF"]
-    ret = []
-    names = []
-    for i in rhythms:
-        sos = filters[i]
-        f = sosfilt(sos, sig)
-        r, n = time_params(f, f"{name} {rts[i]}", ent)
-        ret = ret + r
-        names = names + n
-
-    return ret, names
-
-
-def ecg_rhythms(sig, name, filters, ent, rhythms=range(4)):
-    rts = ["PLI", "P/T", "Motion", "QRS", "MF", "BW", "HF", "EMG"]
-    ret = []
-    names = []
-    for i in rhythms:
-        sos = filters[i]
-        f = sosfilt(sos, sig)
-        r, n = time_params(f, f"{name} {rts[i]}", ent)
-        ret = ret + r
-        names = names + n
-
-    return ret, names
-
-
-def entropy(signal, order):
-    if len(signal.shape) != 1:
-        raise ValueError("Input signal must be a 1D array.")
-
-    n = len(signal)
-    embedded_matrix = np.empty((n - order + 1, order))
-    for i in range(n - order + 1):
-        embedded_matrix[i] = signal[i : i + order]
-
-    _, counts = np.unique(embedded_matrix, axis=0, return_counts=True)
-    symbol_probs = counts / np.sum(counts)
-
-    entropy = 0.0
-    for p in symbol_probs:
-        if p > 0:
-            entropy -= p * log2(p)
-
-    return entropy
-
-
-def entropy_params(sig, name):
-    ret, names = [], []
-    for i in range(3, 6):
-        ret.append(entropy(sig, i))
-        names.append(f"{name} {i}-th entr")
-
-    return ret, names
-
-
-def pRR50(sig):
-    diffs = np.abs(np.diff(sig))
-    return np.sum(diffs > 50e-3) / (len(sig) - 1) * 100
-
-
-def pRR20(sig):
-    diffs = np.abs(np.diff(sig))
-    return np.sum(diffs > 20e-3) / (len(sig) - 1) * 100
-
-
-def eeg_analyser(ds, fs, filters, wlt, level, ent=False):
-    vals, names = [], []
-    for name in ds:
-        new_vals, new_names = eeg_freq_params(ds[name], fs, name)
-        vals = vals + new_vals
-        names = names + new_names
-        new_vals, new_names = time_params(ds[name], name, ent)
-        vals = vals + new_vals
-        names = names + new_names
-        new_vals, new_names = wave_params(ds[name], name, ent, wlt, level)
-        vals = vals + new_vals
-        names = names + new_names
-        new_vals, new_names = eeg_rhythms(ds[name], name, filters, ent)
-        vals = vals + new_vals
-        names = names + new_names
-
-    return vals, names
-
-
-def hr_interp_analyser(ds, fs, filters, wlt, level, ent=False):
-    vals, names = [], []
-    for name in ds:
-        new_vals, new_names = hr_freq_params(ds[name], fs, name)
-        vals = vals + new_vals
-        names = names + new_names
-        new_vals, new_names = time_params(ds[name], name, ent)
-        vals = vals + new_vals
-        names = names + new_names
-        new_vals, new_names = wave_params(ds[name], name, ent, wlt, level)
-        vals = vals + new_vals
-        names = names + new_names
-        new_vals, new_names = hr_rhythms(ds[name], name, filters, ent)
-        vals = vals + new_vals
-        names = names + new_names
-
-    return vals, names
-
-
-def hr_analyser(ds):
-    vals, names = [], []
-    for name in ds:
-       vals = vals + [
-                      np.std(ds[name]),
-                      np.std([ds[name][i+1] - ds[name][i] for i in range(len(ds[name])-1)]),
-                      np.mean(ds[name]),
-                      mode(ds[name]),
-                      skewness(ds[name]),
-                      kurtosis(ds[name]),
-                      pRR50(ds[name]),
-                      pRR20(ds[name]),
-                      np.max(ds[name]) - np.min(ds[name])
-                      ]
-       name = name + [
-                      f'{name} SDRR',
-                      f'{name} RMSSD',
-                      f'{name} mean',
-                      f'{name} mode',
-                      f'{name} skewness',
-                      f'{name} kurtosis',
-                      f'{name} pRR50',
-                      f'{name} pRR20',
-                      f'{name} Max-Min'
-                      ]
-
-    return vals, names
-
-
-def ecg_analyser(ds, fs, filters, wlt, level, ent=False):
-    vals, names = [], []
-    for name in ds:
-        new_vals, new_names = ecg_freq_params(ds[name], fs, name)
-        vals = vals + new_vals
-        names = names + new_names
-        new_vals, new_names = time_params(ds[name], name, ent)
-        vals = vals + new_vals
-        names = names + new_names
-        new_vals, new_names = wave_params(ds[name], name, ent, wlt, level)
-        vals = vals + new_vals
-        names = names + new_names
-        new_vals, new_names = ecg_rhythms(ds[name], name, filters, ent)
-        vals = vals + new_vals
-        names = names + new_names
-
-    return vals, names
-
-
-def progress_tracker(logtxtbox, time_now, start_time, done, total):
-    elap = time_now - start_time
-    elap_m, elap_s = divmod(elap, 60)
-    elap_h, elap_m = divmod(elap_m, 60)
-
-    rem = elap * (total / done - 1)
-    rem_m, rem_s = divmod(rem, 60)
-    rem_h, rem_m = divmod(rem_m, 60)
-
-    logtxtbox.text(
-        f"Done: {done/total*100:.2f}%, Elapsed: {elap_h:02.0f}:{elap_m:02.0f}:{elap_s:02.0f}, Remaining: {rem_h:02.0f}:{rem_m:02.0f}:{rem_s:02.0f}"
-    )
-    return f"Done: {done/total*100:.2f}%, Elapsed: {elap_h:02.0f}:{elap_m:02.0f}:{elap_s:02.0f}, Remaining: {rem_h:02.0f}:{rem_m:02.0f}:{rem_s:02.0f}"
+    if analysis_type == 'Classification':
+        return estimators, [model for i, model in enumerate(models.keys()) if to_use[i]], predictions, y_test, yNames, scaler, le
+    elif analysis_type == 'Regression':
+        return estimators, [model for i, model in enumerate(models.keys()) if to_use[i]], predictions, y_test, yNames, scaler

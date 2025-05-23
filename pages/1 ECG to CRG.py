@@ -1,21 +1,30 @@
+from functions.read_edf import readedf
+from functions.r_peaks import r_peaks
 from scipy import signal, interpolate
 from pyedflib import highlevel
 import streamlit as st
 import numpy as np
 import os
-from functions.functions import *
-
-@st.cache_resource
-def readedf(selected_file):
-    signals, signal_headers, header = highlevel.read_edf(selected_file)
-    sig_labels = [x["label"] for x in signal_headers]
-    fs = signal_headers[0]["sample_frequency"]
-    t = np.arange(len(signals[0])) / fs
-    selected_labels = [False] * len(sig_labels)
-    return signals, signal_headers, header, sig_labels, fs, t, selected_labels
-
 
 st.set_page_config(layout="wide")
+PAGE_NAME = "ECG to CRG"
+
+def _reset_pre_selection_page_state():
+    if st.session_state.get('last_active_page') != PAGE_NAME:
+        st.session_state.df_path_confirmed = False
+        st.session_state.pkl_path_confirmed = False
+        st.session_state.current_df_path = ""
+        st.session_state.current_pkl_path = ""
+        st.session_state.current_analysis_type = "Classification"
+        st.session_state.current_to_use_models = []
+        st.session_state.calculation_triggered = False
+
+_reset_pre_selection_page_state()
+st.session_state['last_active_page'] = PAGE_NAME
+
+@st.cache_resource
+def call_readedf(selected_file):
+    return readedf(selected_file)
 
 
 left, right = st.columns(2)
@@ -72,5 +81,7 @@ with left:
             
             highlevel.write_edf(saveto+filename_short[:-3]+"edf", signals=[RR, RR_interp],
                                 header=header,
-                                signal_headers=[{'label': 'CRG', 'dimension': 's', 'sample_rate': 1.0, 'sample_frequency': 1.0, 'physical_max': max(abs(RR)), 'physical_min': -max(abs(RR)), 'digital_max': 32767, 'digital_min': -32767, 'prefilter': 'HP:0.000 Hz LP:0.0 Hz N:0.0', 'transducer': 'Unknown'},
-                                                {'label': 'CRG interp', 'dimension': 's', 'sample_rate': 8.0, 'sample_frequency': 8.0, 'physical_max': max(abs(RR_interp)), 'physical_min': -max(abs(RR_interp)), 'digital_max': 32767, 'digital_min': -32767, 'prefilter': 'HP:0.000 Hz LP:0.0 Hz N:0.0', 'transducer': 'Unknown'}])
+                                signal_headers=[{'label': 'CRG', 'dimension': 's', 'sample_rate': 1.0, 'sample_frequency': 1.0, 'physical_max': max(abs(RR)),
+                                                 'physical_min': -max(abs(RR)), 'digital_max': 32767, 'digital_min': -32767, 'prefilter': 'HP:0.000 Hz LP:0.0 Hz N:0.0', 'transducer': 'Unknown'},
+                                                {'label': 'CRG interp', 'dimension': 's', 'sample_rate': 8.0, 'sample_frequency': 8.0, 'physical_max': max(abs(RR_interp)),
+                                                 'physical_min': -max(abs(RR_interp)), 'digital_max': 32767, 'digital_min': -32767, 'prefilter': 'HP:0.000 Hz LP:0.0 Hz N:0.0', 'transducer': 'Unknown'}])

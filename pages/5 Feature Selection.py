@@ -1,122 +1,59 @@
 # -*- coding: utf-8 -*-
 from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif, f_regression, mutual_info_regression
-from mlxtend.feature_selection import SequentialFeatureSelector as SFS
-from sklearn.model_selection import cross_val_score
-from joblib import Parallel, delayed
 from sklearnex import patch_sklearn
-from sklearn.base import clone
 import streamlit as st
-from tqdm import tqdm
 import pandas as pd
 import numpy as np
 import warnings
 import pickle
 import os
-from functions.functions import *
+import functions.functions as fn
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 patch_sklearn()
 
-def feature_selection_importance(X, y, model, max_features, use_model_based, selection_method, cv=5, scoring='accuracy'):
-    if use_model_based:
-        if hasattr(model, 'feature_importances_'):
-            importance = model.feature_importances_
-        elif hasattr(model, 'coef_'):
-            importance = np.abs(model.coef_).flatten()
-        else:
-            raise ValueError("Model does not have feature_importances_ or coef_ attribute.")
-
-        feature_indices = np.argsort(importance)[::-1]
-
-        if max_features == -1:
-            max_features = X.shape[1]
-
-        best_score = 0
-        best_features = []
-
-        def evaluate_features(selected_features):
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=UserWarning)
-                X_selected = X.iloc[:, selected_features]
-                scores = cross_val_score(clone(model), X_selected, y, cv=cv, scoring=scoring)
-            return np.mean(scores), selected_features
-
-        results = Parallel(n_jobs=-1)(delayed(evaluate_features)(feature_indices[:i]) for i in tqdm(range(1, max_features + 1)))
-
-        for mean_score, selected_features in results:
-            if mean_score > best_score:
-                best_score = mean_score
-                best_features = selected_features
-
-        return best_features.tolist(), best_score
-    else:
-        sfs = SFS(
-            model,
-            k_features=[(1, max_features), "best"][max_features == -1],
-            forward=selection_method == 'Forward',
-            floating=False,
-            verbose=1,
-            scoring=["accuracy","r2"][is_regression],
-            n_jobs=-1,
-            cv=5,
-        )
-
-        sfs = sfs.fit(X, y)
-        ft = sfs.k_feature_names_
-        best_score = sfs.k_score_
-        
-        return ft, best_score
-
 st.set_page_config(layout="wide")
+PAGE_NAME = "Selection"
 
-left, right = st.columns(2)
-with left:
-    with st.form("file_selector_form", clear_on_submit=False):
-        dft_path_folder = os.path.join(os.path.dirname(__file__), "..", "Features/Learning")
-        dft_path_ls = os.listdir(dft_path_folder)
-        dft_path_option = st.selectbox("Select features file:", options=[""]+dft_path_ls)
-        if dft_path_option != "":
-            dft_path = os.path.join(dft_path_folder, dft_path_option)
+def _reset_pre_selection_page_state():
+    if st.session_state.get('last_active_page') != PAGE_NAME:
+        st.session_state.df_path_confirmed = False
+        st.session_state.pkl_path_confirmed = False
+        st.session_state.current_df_path = ""
+        st.session_state.current_pkl_path = ""
+        st.session_state.current_analysis_type = "Classification"
+        st.session_state.current_to_use_models = []
+        st.session_state.calculation_triggered = False
 
-        pkl_path_folder = os.path.join(os.path.dirname(__file__), "..", "Models/Pre-selection")
-        pkl_path_ls = os.listdir(pkl_path_folder)
-        pkl_path_option = st.selectbox("Select models file:", options=[""]+pkl_path_ls)
-        if pkl_path_option != "":
-            pkl_path = os.path.join(pkl_path_folder, pkl_path_option)
+_reset_pre_selection_page_state()
+st.session_state['last_active_page'] = PAGE_NAME
 
-        max_features = int(st.text_input("Maximum number of selected features:", value="-1"))
-        pre_selection = int(st.text_input("Number of pre-selected features:", value="-1"))
-        pre_selection_trees = int(st.text_input("Number of pre-selected features (tree-based):", value="-1"))
-        saveto_name = st.text_input("Select output .pkl file name:", value="selected_features").replace('.pkl', "")
-        saveto = os.path.join(os.path.dirname(__file__), "..", f"Features/Selected features/{saveto_name}.pkl")
-        is_regression = st.checkbox('Regression')
-        use_model_based = st.checkbox('Use model-specific scores/coefficients', value=True)
-        selection_method = st.selectbox("Method:",options=['Forward', 'Backward'])
-
-        select_file_b = st.form_submit_button("Confirm", type="primary")
 
 @st.cache_resource(show_spinner=False)
-def main(dft_path,pkl_path,max_features):
-    dft = pd.read_csv(dft_path)
+def read_and_prepare(df_path):
+    return fn.read_and_prepare(df_path)
+
+
+@st.cache_resource(show_spinner=False)
+def models_feature_selection(df_path,pkl_path,max_features):
+    df = read_and_prepare(df_path)
     with open(pkl_path, 'rb') as f:
         if is_regression:
-            scaler, models = pickle.load(f)
+            [scaler], models = pickle.load(f)
         else:
-            scaler, le, models = pickle.load(f)
+            [scaler, le], models = pickle.load(f)
     logtxtbox = st.empty()
     status_text = f'{"Getting data...":<31}\t'
     logtxtbox.text(status_text)
-    labels = dft.columns
-    dft = null_remover(dft)
-    df = nan_remover(dft)
-    # df = outliers_remover(dft)
+    labels = df.columns
 
     class_label = labels[-1]
     if is_regression:
         y = np.array(df[class_label])
     else:
         y = le.transform(np.array(df[class_label]))
+
     dfX = df[labels[:-1]]
     scaled = scaler.transform(dfX).T
     feature_names_out = scaler.get_feature_names_out(labels[:-1])
@@ -143,12 +80,13 @@ def main(dft_path,pkl_path,max_features):
                 est.fit(df_X, dfY.values.ravel())
             
             max_features = min([max_features, len(df_X.columns)])
-            ft, best_score = feature_selection_importance(df_X,
+            ft, best_score = fn.feature_selection_importance(df_X,
                                          y,
                                          est,
                                          max_features,
                                          use_model_based,
                                          selection_method,
+                                         is_regression,
                                          cv=5,
                                          scoring=["accuracy","r2"][is_regression])
 
@@ -161,12 +99,13 @@ def main(dft_path,pkl_path,max_features):
                 est.fit(df_X, dfY.values.ravel())
             
             max_features = min([max_features, len(df_X.columns)])
-            ft, best_score = feature_selection_importance(df_X,
+            ft, best_score = fn.feature_selection_importance(df_X,
                                          y,
                                          est,
                                          max_features,
                                          use_model_based,
                                          selection_method,
+                                         is_regression,
                                          cv=5,
                                          scoring=["accuracy","r2"][is_regression])
         else:
@@ -178,12 +117,13 @@ def main(dft_path,pkl_path,max_features):
                 est.fit(df_X, dfY.values.ravel())
 
             max_features = min([max_features, len(df_X.columns)])
-            ft, best_score = feature_selection_importance(df_X,
+            ft, best_score = fn.feature_selection_importance(df_X,
                                          y,
                                          est,
                                          max_features,
                                          use_model_based=False,
                                          selection_method=selection_method,
+                                         is_regression=is_regression,
                                          cv=5,
                                          scoring=["accuracy","r2"][is_regression])
 
@@ -196,15 +136,42 @@ def main(dft_path,pkl_path,max_features):
     else:
         return ret, scaler, le
 
-if select_file_b:
-    main.clear()
 
-if (dft_path_option != "" and pkl_path_option != "") or (select_file_b and dft_path_option != "" and pkl_path_option != ""):
+left, right = st.columns(2)
+with left:
+    with st.form("file_selector_form", clear_on_submit=False):
+        df_path_folder = os.path.join(os.path.dirname(__file__), "..", "Features/Learning")
+        df_path_ls = os.listdir(df_path_folder)
+        df_path_option = st.selectbox("Select features file:", options=[""]+df_path_ls)
+        if df_path_option != "":
+            df_path = os.path.join(df_path_folder, df_path_option)
+
+        pkl_path_folder = os.path.join(os.path.dirname(__file__), "..", "Models/Pre-selection")
+        pkl_path_ls = os.listdir(pkl_path_folder)
+        pkl_path_option = st.selectbox("Select models file:", options=[""]+pkl_path_ls)
+        if pkl_path_option != "":
+            pkl_path = os.path.join(pkl_path_folder, pkl_path_option)
+
+        max_features = int(st.text_input("Maximum number of selected features:", value="-1"))
+        pre_selection = int(st.text_input("Number of pre-selected features:", value="-1"))
+        pre_selection_trees = int(st.text_input("Number of pre-selected features (tree-based):", value="-1"))
+        saveto_name = st.text_input("Select output .pkl file name:", value="selected_features").replace('.pkl', "")
+        saveto = os.path.join(os.path.dirname(__file__), "..", f"Features/Selected features/{saveto_name}.pkl")
+        is_regression = st.checkbox('Regression')
+        use_model_based = st.checkbox('Use model-specific scores/coefficients', value=True)
+        selection_method = st.selectbox("Method:",options=['Forward', 'Backward'])
+
+        select_file_b = st.form_submit_button("Confirm", type="primary")
+
+if select_file_b:
+    models_feature_selection.clear()
+
+if (df_path_option != "" and pkl_path_option != "") or (select_file_b and df_path_option != "" and pkl_path_option != ""):
     with right:
         if is_regression:
-            models, scaler = main(dft_path, pkl_path, max_features)
+            models, scaler = models_feature_selection(df_path, pkl_path, max_features)
         else:
-            models, scaler, le = main(dft_path, pkl_path, max_features)
+            models, scaler, le = models_feature_selection(df_path, pkl_path, max_features)
 
     with st.form("my_form", clear_on_submit=False, border=False):
         Methods = [i for (i, _) in models]
@@ -216,9 +183,9 @@ if (dft_path_option != "" and pkl_path_option != "") or (select_file_b and dft_p
 
     if save_button:
         if is_regression:
-            to_save = (scaler, [models[i] for i in range(len(Methods)) if selected_models[i]])
+            to_save = ([scaler], [models[i] for i in range(len(Methods)) if selected_models[i]])
         else:
-            to_save = (scaler, le, [models[i] for i in range(len(Methods)) if selected_models[i]])
+            to_save = ([scaler, le], [models[i] for i in range(len(Methods)) if selected_models[i]])
         with open(saveto, 'wb') as f:
             pickle.dump(to_save, f)
             

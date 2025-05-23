@@ -1,10 +1,31 @@
-from functions.functions import sgram_part
+from functions.sgram_part import sgram_part
+from functions.read_edf import readedf
 import matplotlib.pyplot as plt
-from pyedflib import highlevel
 import streamlit as st
 from scipy import fft
 import numpy as np
 import os
+
+st.set_page_config(layout="wide")
+PAGE_NAME = "Home"
+
+def _reset_pre_selection_page_state():
+    if st.session_state.get('last_active_page') != PAGE_NAME:
+        st.session_state.df_path_confirmed = False
+        st.session_state.pkl_path_confirmed = False
+        st.session_state.current_df_path = ""
+        st.session_state.current_pkl_path = ""
+        st.session_state.current_analysis_type = "Classification"
+        st.session_state.current_to_use_models = []
+        st.session_state.calculation_triggered = False
+
+_reset_pre_selection_page_state()
+st.session_state['last_active_page'] = PAGE_NAME
+
+@st.cache_resource
+def call_readedf(selected_file):
+    return readedf(selected_file)
+
 
 folders_to_create = [
     "Features/Learning",
@@ -24,17 +45,6 @@ for folder in folders_to_create:
 variants = ["EEG", "ECG"]
 
 
-@st.cache_resource
-def readedf(selected_file):
-    signals, signal_headers, header = highlevel.read_edf(selected_file)
-    sig_labels = [x["label"] for x in signal_headers]
-    fs = signal_headers[0]["sample_frequency"]
-    selected_labels = [False] * len(sig_labels)
-    return signals, signal_headers, header, sig_labels, fs, selected_labels
-
-
-st.set_page_config(layout="wide")
-
 left, right = st.columns(2)
 with left:
     with st.form("file_selector_form", clear_on_submit=False):
@@ -49,7 +59,7 @@ with left:
         select_file_b = st.form_submit_button("Confirm", type="primary")
 
 if file_dir != "":
-    signals, signal_headers, header, sig_labels, fs, selected_labels = readedf(
+    signals, signal_headers, header, sig_labels, fs, selected_labels = call_readedf(
         file_dir + "\\" + selected_file
     )
 
