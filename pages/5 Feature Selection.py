@@ -36,7 +36,7 @@ def read_and_prepare(df_path):
 
 
 @st.cache_resource(show_spinner=False)
-def models_feature_selection(df_path,pkl_path,max_features):
+def models_feature_selection(df_path, pkl_path, max_features):
     df = read_and_prepare(df_path)
     with open(pkl_path, 'rb') as f:
         if is_regression:
@@ -140,6 +140,8 @@ def models_feature_selection(df_path,pkl_path,max_features):
 left, right = st.columns(2)
 with left:
     with st.form("file_selector_form", clear_on_submit=False):
+        analysis_type = st.selectbox('Analysis type', options=['Classification', 'Regression'])
+        is_regression = analysis_type == 'Regression'
         df_path_folder = os.path.join(os.path.dirname(__file__), "..", "Features/Learning")
         df_path_ls = os.listdir(df_path_folder)
         df_path_option = st.selectbox("Select features file:", options=[""]+df_path_ls)
@@ -157,7 +159,6 @@ with left:
         pre_selection_trees = int(st.text_input("Number of pre-selected features (tree-based):", value="-1"))
         saveto_name = st.text_input("Select output .pkl file name:", value="selected_features").replace('.pkl', "")
         saveto = os.path.join(os.path.dirname(__file__), "..", f"Features/Selected features/{saveto_name}.pkl")
-        is_regression = st.checkbox('Regression')
         use_model_based = st.checkbox('Use model-specific scores/coefficients', value=True)
         selection_method = st.selectbox("Method:",options=['Forward', 'Backward'])
 

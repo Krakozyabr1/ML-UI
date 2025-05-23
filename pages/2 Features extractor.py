@@ -96,8 +96,8 @@ if s_dir != "":
         )
 
 with right:
-    with st.form("my_form", clear_on_submit=False, border=False):
-        if s_dir != "":
+    if s_dir != "":
+        with st.form("my_form", clear_on_submit=False, border=False):
             cols = st.columns(3)
             for i, label in enumerate(labels):
                 with cols[i % 3]:
@@ -105,7 +105,7 @@ with right:
                         label,
                         value=(signal_type in label),
                     )
-        analyze_b = st.form_submit_button("Calculate", type="primary")
+            analyze_b = st.form_submit_button("Calculate", type="primary")
 
 is_ready = True
 for check in [s_dir, filestoread]:
@@ -113,7 +113,7 @@ for check in [s_dir, filestoread]:
         is_ready = False
         break
 
-if is_ready and analyze_b:
+if 'analyze_b' in globals() and (is_ready and analyze_b):
     with right:
         logtxtbox = st.empty()
         if learning_check:

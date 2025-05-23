@@ -52,155 +52,75 @@ def call_plotter_class(Methods, Cs, yNames, Accs, cmap):
     fn.classification_plotter(columns2, Methods, Cs, yNames, Accs, cmap)
 
 
-def prepare_data_2(df_path, to_encode=False):
-    with open(pkl_path, 'rb') as f:
-        if to_encode:
-            [scaler, le], loaded = pickle.load(f)
-        else:
-            [scaler], loaded = pickle.load(f)
-
-    df = read_and_prepare(df_path)
-    labels = df.columns
-    class_label = labels[-1]
-    yNames = np.unique(np.array(df[class_label]))
-
-    y = np.array(df[class_label])
-    dfX = df[labels[:-1]]
-    scaled = scaler.transform(dfX).T
-    feature_names_out = scaler.get_feature_names_out(labels[:-1])
-
-    if to_encode:
-        le = LabelEncoder()
-        y = le.fit_transform(y)
-
-    dfX = pd.DataFrame({feature_names_out[i]: scaled[i] for i in range(len(feature_names_out))})
-
-    if to_encode:
-        X_train, X_test, y, y_test = train_test_split(dfX, y, test_size=0.2, stratify=y)
-    else:
-        X_train, X_test, y, y_test = train_test_split(dfX, y, test_size=0.2)
-
-    if to_encode:
-        return X_train, X_test, y, y_test, loaded, yNames, scaler, le
-    else:
-        return X_train, X_test, y, y_test, loaded, yNames, scaler
-
-
 @st.cache_resource(show_spinner=False)
-def models_tuning_2(df_path, n_iter, analysis_type):
-    if analysis_type == 'Classification':
-        from functions.classification_config import CLASSIFICATION_PARAMS_SET, CLASSIFICATION_MODELS
-        params_set = CLASSIFICATION_PARAMS_SET
-        models = CLASSIFICATION_MODELS
-
-        X_train, X_test, y, y_test, loaded, yNames, scaler, le = prepare_data_2(df_path, to_encode=True)
-
-    elif analysis_type == 'Regression':
-        from functions.regression_config import REGRESSION_PARAMS_SET, REGRESSION_MODELS
-        params_set = REGRESSION_PARAMS_SET
-        models = REGRESSION_MODELS
-    
-        X_train, X_test, y, y_test, loaded, yNames, scaler = prepare_data_2(df_path, to_encode=False)
-    
-    estimators = []
-
-    status_text = ''
-    logtxtbox = st.empty()
-    predictions = []
-
-    for modelname, selected_labels in loaded:
-        try:
-            X = X_train.loc[:,selected_labels]
-        except:
-            X = X_train.iloc[:,selected_labels]
-        params = params_set[modelname]
-        status_text = status_text + f'{modelname+'...':<31}\t '
-        logtxtbox.text(status_text)
-        if analysis_type == 'Classification':
-                clf = BayesSearchCV(models[modelname], params, cv=5, n_points=2, n_iter=n_iter, n_jobs=-1)
-        elif analysis_type == 'Regression':
-            if modelname == 'SVR':
-                clf = BayesSearchCV(models[modelname], params, cv=5, n_points=1, n_iter=n_iter, n_jobs=1, scoring='r2')
-            else:
-                clf = BayesSearchCV(models[modelname], params, cv=5, n_points=2, n_iter=n_iter, n_jobs=-1, scoring='r2')
-        clf.fit(X, y)
-        est = clf.best_estimator_
-        estimators.append(est)
-        try:
-            X = X_test.loc[:,selected_labels]
-        except:
-            X = X_test.iloc[:,selected_labels]
-        predictions.append(est.predict(X))
-        status_text = status_text + f'Done! (cv score: {round(clf.best_score_*100)}%)\n'
-
-    logtxtbox.text(status_text)
-
-    return estimators, loaded, predictions, y_test, yNames, scaler
+def models_tuning_2(df_path, pkl_path, n_iter, analysis_type):
+    return fn.models_tuning_2(df_path, pkl_path, n_iter, analysis_type)
 
 
 left, right = st.columns(2)
 with left:
-    analysis_type_options = ['Classification', 'Regression']
-    analysis_type = st.selectbox(
-        'Analysis type:',
-        options=analysis_type_options,
-        key="analysis_type_selector",
-        on_change=lambda: st.session_state.update(df_path_confirmed=False, calculation_triggered=False)
-    )
-    with st.form("file_selector_form", clear_on_submit=False):
-        df_path_folder = os.path.join(os.path.dirname(__file__), "..", "Features/Learning")
-        df_path_ls = os.listdir(df_path_folder)
-        df_path_option = st.selectbox("Select features file:",
-                                      options=[""]+df_path_ls,
-                                      key="df_path_option_form_key")
-        
-        if df_path_option != "":
-            df_path = os.path.join(df_path_folder, df_path_option)
-        else:
-            df_path = ""
-
-        pkl_path_folder = os.path.join(os.path.dirname(__file__), "..", "Features/Selected features")
-        pkl_path_ls = os.listdir(pkl_path_folder)
-        pkl_path_option = st.selectbox("Select models file:",
-                                      options=[""]+pkl_path_ls,
-                                      key="pkl_path_option_form_key")
-        
-        if pkl_path_option != "":
-            pkl_path = os.path.join(pkl_path_folder, pkl_path_option)
-        else:
-            pkl_path = ""
-
-        if analysis_type == 'Regression':
-            left2, right2 = st.columns(2)
-            with left2:
-                use_sig = st.checkbox('Use sigmoid transform', value=False)
-            with right2:
-                use_round = st.checkbox('Round output', value=False)
-
-        n_iter = int(st.text_input("Number of iterations for BayesSearchCV:", value="50"))
-
-        saveto_name = st.text_input("Select output .pkl file name:", value="selected_models").replace('.pkl', "")
-        saveto = os.path.join(os.path.dirname(__file__), "..", f"Models/Trained/{saveto_name}.pkl")
-        select_file_b = st.form_submit_button("Confirm", type="primary")
-
-        if select_file_b:
-            if df_path_option == "":
-                st.warning("Please select a features file before confirming.")
-                st.session_state.df_path_confirmed = False
-                st.session_state.calculation_triggered = False
-            elif pkl_path_option == "":
-                st.warning("Please select a models file before confirming.")
-                st.session_state.pkl_path_confirmed = False
-                st.session_state.calculation_triggered = False
+    with st.container(border=True):
+        analysis_type_options = ['Classification', 'Regression']
+        analysis_type = st.selectbox(
+            'Analysis type:',
+            options=analysis_type_options,
+            key="analysis_type_selector",
+            on_change=lambda: st.session_state.update(df_path_confirmed=False, calculation_triggered=False)
+        )
+        with st.form("file_selector_form", clear_on_submit=False, border=False):
+            df_path_folder = os.path.join(os.path.dirname(__file__), "..", "Features/Learning")
+            df_path_ls = os.listdir(df_path_folder)
+            df_path_option = st.selectbox("Select features file:",
+                                        options=[""]+df_path_ls,
+                                        key="df_path_option_form_key")
+            
+            if df_path_option != "":
+                df_path = os.path.join(df_path_folder, df_path_option)
             else:
-                st.session_state.df_path_confirmed = True
-                st.session_state.pkl_path_confirmed = True
-                st.session_state.current_df_path = df_path
-                st.session_state.current_pkl_path = pkl_path
-                st.session_state.current_analysis_type = analysis_type
-                st.session_state.calculation_triggered = True
+                df_path = ""
 
-                models_tuning_2.clear()
+            pkl_path_folder = os.path.join(os.path.dirname(__file__), "..", "Features/Selected features")
+            pkl_path_ls = os.listdir(pkl_path_folder)
+            pkl_path_option = st.selectbox("Select models file:",
+                                        options=[""]+pkl_path_ls,
+                                        key="pkl_path_option_form_key")
+            
+            if pkl_path_option != "":
+                pkl_path = os.path.join(pkl_path_folder, pkl_path_option)
+            else:
+                pkl_path = ""
+
+            if analysis_type == 'Regression':
+                left2, right2 = st.columns(2)
+                with left2:
+                    use_sig = st.checkbox('Use sigmoid transform', value=False)
+                with right2:
+                    use_round = st.checkbox('Round output', value=False)
+
+            n_iter = int(st.text_input("Number of iterations for BayesSearchCV:", value="50"))
+
+            saveto_name = st.text_input("Select output .pkl file name:", value="selected_models").replace('.pkl', "")
+            saveto = os.path.join(os.path.dirname(__file__), "..", f"Models/Trained/{saveto_name}.pkl")
+            select_file_b = st.form_submit_button("Confirm", type="primary")
+
+            if select_file_b:
+                if df_path_option == "":
+                    st.warning("Please select a features file before confirming.")
+                    st.session_state.df_path_confirmed = False
+                    st.session_state.calculation_triggered = False
+                elif pkl_path_option == "":
+                    st.warning("Please select a models file before confirming.")
+                    st.session_state.pkl_path_confirmed = False
+                    st.session_state.calculation_triggered = False
+                else:
+                    st.session_state.df_path_confirmed = True
+                    st.session_state.pkl_path_confirmed = True
+                    st.session_state.current_df_path = df_path
+                    st.session_state.current_pkl_path = pkl_path
+                    st.session_state.current_analysis_type = analysis_type
+                    st.session_state.calculation_triggered = True
+
+                    models_tuning_2.clear()
 
 if st.session_state.calculation_triggered:
     if st.session_state.current_analysis_type == 'Classification':
@@ -213,6 +133,7 @@ if st.session_state.calculation_triggered:
     with right:
         estimators, models, predictions, y_test, yNames, scaler = models_tuning_2(
                                                                     st.session_state.current_df_path,
+                                                                    st.session_state.current_pkl_path,
                                                                     n_iter,
                                                                     st.session_state.current_analysis_type
                                                                     )

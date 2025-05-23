@@ -49,72 +49,73 @@ def models_tuning_1_reg(df_path, to_use, n_iter, pre_selected_num, analysis_type
 
 left, right = st.columns(2)
 with left:
-    analysis_type_options = ['Classification', 'Regression']
-    analysis_type = st.selectbox(
-        'Analysis type:',
-        options=analysis_type_options,
-        key="analysis_type_selector",
-        on_change=lambda: st.session_state.update(df_path_confirmed=False, calculation_triggered=False)
-    )
-    with st.form("file_selector_form", clear_on_submit=False):
-        df_path_folder = os.path.join(os.path.dirname(__file__), "..", "Features/Learning")
-        df_path_ls = os.listdir(df_path_folder)
-        df_path_option = st.selectbox("Select features file:",
-                                      options=[""]+df_path_ls,
-                                      key="df_path_option_form_key")
-        
-        if df_path_option != "":
-            df_path = os.path.join(df_path_folder, df_path_option)
-        else:
-            df_path = ""
-
-        if analysis_type == 'Regression':
-            left2, right2 = st.columns(2)
-            with left2:
-                use_sig = st.checkbox('Use sigmoid transform', value=False)
-            with right2:
-                use_round = st.checkbox('Round output', value=False)
-
-        pre_selected_num = int(
-                st.text_input("Number of features to use for BayesSearchCV:", value="-1")
-            )
-        n_iter = int(st.text_input("Number of iterations for BayesSearchCV:", value="20"))
-
-        saveto_name = st.text_input("Select output .pkl file name:", value="selected_models").replace('.pkl', "")
-        saveto = os.path.join(os.path.dirname(__file__), "..", f"Models/Pre-selection/{saveto_name}.pkl")
-
-        if analysis_type == 'Regression':
-            available_models = ['Ridge', 'Lasso', 'ElasticNet', 'DecisionTreeRegressor',
-                                'SVR','KNeighborsRegressor', 'XGBRegressor']
+    with st.container(border=True):
+        analysis_type_options = ['Classification', 'Regression']
+        analysis_type = st.selectbox(
+            'Analysis type:',
+            options=analysis_type_options,
+            key="analysis_type_selector",
+            on_change=lambda: st.session_state.update(df_path_confirmed=False, calculation_triggered=False)
+        )
+        with st.form("file_selector_form", clear_on_submit=False, border=False):
+            df_path_folder = os.path.join(os.path.dirname(__file__), "..", "Features/Learning")
+            df_path_ls = os.listdir(df_path_folder)
+            df_path_option = st.selectbox("Select features file:",
+                                        options=[""]+df_path_ls,
+                                        key="df_path_option_form_key")
             
-        elif analysis_type == 'Classification':
-            available_models = ['LogisticRegression','KNeighborsClassifier','GaussianNB',
-                                'DecisionTreeClassifier','RandomForestClassifier',
-                                'GradientBoostingClassifier','RidgeClassifier','SVC']
-        
-        to_use = [True] * len(available_models)
-        for i, to_use_label in enumerate(available_models):
-            to_use[i] = st.checkbox(to_use_label, True, key=f"model_checkbox_{i}_form")
-
-        select_file_b = st.form_submit_button("Confirm", type="primary")
-
-        if select_file_b:
-            if df_path_option == "":
-                st.warning("Please select a features file before confirming.")
-                st.session_state.df_path_confirmed = False
-                st.session_state.calculation_triggered = False
-            elif sum(to_use) == 0:
-                st.warning("Please select at least one model to use.")
-                st.session_state.df_path_confirmed = False
-                st.session_state.calculation_triggered = False
+            if df_path_option != "":
+                df_path = os.path.join(df_path_folder, df_path_option)
             else:
-                st.session_state.df_path_confirmed = True
-                st.session_state.current_df_path = df_path
-                st.session_state.current_analysis_type = analysis_type
-                st.session_state.current_to_use_models = to_use
-                st.session_state.calculation_triggered = True
+                df_path = ""
 
-                models_tuning_1.clear()
+            if analysis_type == 'Regression':
+                left2, right2 = st.columns(2)
+                with left2:
+                    use_sig = st.checkbox('Use sigmoid transform', value=False)
+                with right2:
+                    use_round = st.checkbox('Round output', value=False)
+
+            pre_selected_num = int(
+                    st.text_input("Number of features to use for BayesSearchCV:", value="-1")
+                )
+            n_iter = int(st.text_input("Number of iterations for BayesSearchCV:", value="20"))
+
+            saveto_name = st.text_input("Select output .pkl file name:", value="selected_models").replace('.pkl', "")
+            saveto = os.path.join(os.path.dirname(__file__), "..", f"Models/Pre-selection/{saveto_name}.pkl")
+
+            if analysis_type == 'Regression':
+                available_models = ['Ridge', 'Lasso', 'ElasticNet', 'DecisionTreeRegressor',
+                                    'SVR','KNeighborsRegressor', 'XGBRegressor']
+                
+            elif analysis_type == 'Classification':
+                available_models = ['LogisticRegression','KNeighborsClassifier','GaussianNB',
+                                    'DecisionTreeClassifier','RandomForestClassifier',
+                                    'GradientBoostingClassifier','RidgeClassifier','SVC']
+            
+            to_use = [True] * len(available_models)
+            for i, to_use_label in enumerate(available_models):
+                to_use[i] = st.checkbox(to_use_label, True, key=f"model_checkbox_{i}_form")
+
+            select_file_b = st.form_submit_button("Confirm", type="primary")
+
+            if select_file_b:
+                if df_path_option == "":
+                    st.warning("Please select a features file before confirming.")
+                    st.session_state.df_path_confirmed = False
+                    st.session_state.calculation_triggered = False
+                elif sum(to_use) == 0:
+                    st.warning("Please select at least one model to use.")
+                    st.session_state.df_path_confirmed = False
+                    st.session_state.calculation_triggered = False
+                else:
+                    st.session_state.df_path_confirmed = True
+                    st.session_state.current_df_path = df_path
+                    st.session_state.current_analysis_type = analysis_type
+                    st.session_state.current_to_use_models = to_use
+                    st.session_state.calculation_triggered = True
+
+                    models_tuning_1.clear()
     
 
 if st.session_state.calculation_triggered:
@@ -135,7 +136,6 @@ if st.session_state.calculation_triggered:
                                                                     )
 
     with st.form("my_form", clear_on_submit=False, border=False):
-        # Methods = [i for i,_ in models]
         Accs = []
         Cs = []
         
