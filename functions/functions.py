@@ -409,6 +409,7 @@ def models_tuning_2(df_path, pkl_path, n_iter, analysis_type):
 
     return estimators, loaded, predictions, y_test, yNames, scaler
 
+
 def use_models(df_path, pkl_path, analysis_type):
     with open(pkl_path, 'rb') as f:
         scaler, loaded, yNames = pickle.load(f)
@@ -450,3 +451,4 @@ def use_models(df_path, pkl_path, analysis_type):
             df_out['Majority'] = df_out.filter(df_out.columns[1:]).mode(axis=1)[0]
 
     return df_out
+    

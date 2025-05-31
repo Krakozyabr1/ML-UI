@@ -33,6 +33,7 @@ folders_to_create = [
     "Features/ToClassify",
     "Models/Pre-selection",
     "Models/Trained",
+    "Classified",
 ]
 
 for folder in folders_to_create:
