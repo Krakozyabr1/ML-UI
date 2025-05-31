@@ -2,6 +2,7 @@
 
 This web application is designed for the analysis of electrophysiological signals, specifically focusing on electroencephalogram (EEG), electrocardiogram (ECG), and cardiorhythmogram (CRG) signals. The software automates many routine operations, including data processing and model training.
 Currently, it supports multi-channel recordings in the .edf format.
+Also it can be used with tabular data (in this case just skip feature extraction step and put csv file into Features folder).
 
 **Key Features:**
 
@@ -37,23 +38,23 @@ Currently, it supports multi-channel recordings in the .edf format.
 * **Model Pre-tuning:** 
     * Pre-tunes machine learning (ML) models for feature selection using hierarchical search.
     * Supports selecting the number of features for hierarchical search to speed up tuning.
-    * Displays cross-validation accuracy, test accuracy, and discrepancy matrices for each model.
+    * Displays cross-validation accuracy (or r2 for regression), test accuracy, and discrepancy matrices for each model.
     * Allows users to select and save models for further training as .pkl files.
 
 * **Feature Selection:** 
-    * Selects features using sequential feature selection methods.
+    * Selects features using sequential feature selection methods or feature importances given by model itself.
     * Supports selecting the maximum number of features and the size of the initial feature subset.
     * Uses different feature selection methods based on the ML model (e.g., F-measure for support vector machines).
     * Saves selected models and feature lists as .pkl files.
 
 * **Model Tuning:** 
-    * Fine-tunes selected models based on feature selection results.
+    * Tunes selected models based on feature selection results.
     * Requires a .csv file with features and a .pkl file from the previous feature selection step.
 
-* **Data Classification:** 
-    * Classifies new data using trained models.
-    * Requires a .csv file with features and a .pkl file with trained classifiers.
-    * Outputs a .csv file with classification results.
+* **Data Analysis:** 
+    * Analyses (classification or regression) new data using trained models.
+    * Requires a .csv file with features and a .pkl file with trained models.
+    * Outputs a .csv file with models outputs.
 
 **Installation:**
 
