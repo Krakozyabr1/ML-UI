@@ -1,4 +1,4 @@
-from functions.read_edf import readedf
+from functions.read_signals import read_signals
 import streamlit as st
 import pandas as pd
 import warnings
@@ -10,6 +10,19 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 st.set_page_config(layout="wide")
 PAGE_NAME = "Feature extractor"
+
+def to_int(value):
+    try:
+        return int(value)
+    except ValueError:
+        st.warning(f"Cannot convert '{value}' to an integer: Invalid value.")
+        return None
+    except TypeError:
+        st.warning(f"Cannot convert '{value}' to an integer: Invalid type.")
+        return None
+    except Exception as e:
+        st.warning(f"Cannot convert '{value}' to an integer: {e}")
+        return None
 
 def _reset_pre_selection_page_state():
     if st.session_state.get('last_active_page') != PAGE_NAME:
@@ -25,8 +38,8 @@ _reset_pre_selection_page_state()
 st.session_state['last_active_page'] = PAGE_NAME
 
 @st.cache_resource
-def call_readedf(selected_file):
-    return readedf(selected_file)
+def call_read_signals(selected_file):
+    return read_signals(selected_file)
 
 
 left, right = st.columns(2)
@@ -53,9 +66,8 @@ with left:
                 elif s_dir[-1] == "/":
                     s_dir = s_dir[:-1]
 
-        filestoread = int(
-                st.text_input("Files to read from each folder (ignore if not learning):", value="10")
-            )
+        filestoread_input = st.text_input("Files to read from each folder (ignore if not learning):", value="10")
+        filestoread = to_int(filestoread_input)
         
         saveto_name = st.text_input("Select output .csv file name:", value="features").replace('.csv', "")
         if learning_check:
@@ -80,18 +92,26 @@ with left:
                             'fbsp',
                             'cmor',
                             ])
-        wlt_level = int(st.text_input("Level:", value=f"{corr_wavelet[signal_type][1]}"))
+        st.text('Wavelet levels:')
+        wlt_level_l, wlt_level_r = st.columns(2)
+        with wlt_level_l:
+            wlt_level_min_input = st.text_input("From:", value=f"1")
+        with wlt_level_r:
+            wlt_level_input = st.text_input("To:", value=f"{corr_wavelet[signal_type][1]}")
+
+        wlt_level_min = max([to_int(wlt_level_min_input) - 1, 0])
+        wlt_level = to_int(wlt_level_input)
         
         select_file_b = st.form_submit_button("Confirm", type="primary")
         
 
 if s_dir != "":
     if learning_check:
-        signals, signal_headers, header, labels, fs, t, selected_labels = call_readedf(
+        signals, signal_types, dimension, labels, fs, selected_labels = call_read_signals(
             dirs[0] + "\\" + os.listdir(dirs[0])[0]
         )
     else:
-        signals, signal_headers, header, labels, fs, t, selected_labels = call_readedf(
+        signals, signal_types, dimension, labels, fs, selected_labels = call_read_signals(
             s_dir + "\\" + os.listdir(s_dir)[0]
         )
 
@@ -103,12 +123,12 @@ with right:
                 with cols[i % 3]:
                     selected_labels[i] = st.checkbox(
                         label,
-                        value=(signal_type in label),
+                        value=(signal_type in signal_types[i]),
                     )
             analyze_b = st.form_submit_button("Calculate", type="primary")
 
 is_ready = True
-for check in [s_dir, filestoread]:
+for check in [s_dir, filestoread, wlt_level_min, wlt_level, filestoread]:
     if check is None:
         is_ready = False
         break
@@ -144,13 +164,13 @@ if 'analyze_b' in globals() and (is_ready and analyze_b):
         if learning_check:
             ds = [
                     analysis.generate_features_table(e, i, start_time, labels, filters, total_files,
-                                                         wlt, wlt_level, fs, selected_labels, logtxtbox)
+                                                         wlt, wlt_level_min, wlt_level, fs, selected_labels, logtxtbox)
                     for e, i in enumerate(ls)
                 ]
         else:
             ds = [
                 analysis.generate_features_table(e, s_dir+'\\'+i, start_time, labels, filters, total_files, 
-                                                     wlt, wlt_level, fs, selected_labels, logtxtbox)
+                                                     wlt, wlt_level_min, wlt_level, fs, selected_labels, logtxtbox)
                 for e, i in enumerate(ls)
             ]
 

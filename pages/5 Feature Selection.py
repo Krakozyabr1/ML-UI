@@ -29,6 +29,18 @@ def _reset_pre_selection_page_state():
 _reset_pre_selection_page_state()
 st.session_state['last_active_page'] = PAGE_NAME
 
+def to_int(value):
+    try:
+        return int(value)
+    except ValueError:
+        st.warning(f"Cannot convert '{value}' to an integer: Invalid value.")
+        return None
+    except TypeError:
+        st.warning(f"Cannot convert '{value}' to an integer: Invalid type.")
+        return None
+    except Exception as e:
+        st.warning(f"Cannot convert '{value}' to an integer: {e}")
+        return None
 
 @st.cache_resource(show_spinner=False)
 def read_and_prepare(df_path):
@@ -154,9 +166,14 @@ with left:
         if pkl_path_option != "":
             pkl_path = os.path.join(pkl_path_folder, pkl_path_option)
 
-        max_features = int(st.text_input("Maximum number of selected features:", value="-1"))
-        pre_selection = int(st.text_input("Number of pre-selected features:", value="-1"))
-        pre_selection_trees = int(st.text_input("Number of pre-selected features (tree-based):", value="-1"))
+        max_features_input = st.text_input("Maximum number of selected features:", value="-1")
+        pre_selection_input = st.text_input("Number of pre-selected features:", value="-1")
+        pre_selection_trees_input = st.text_input("Number of pre-selected features (tree-based):", value="-1")
+
+        max_features = to_int(max_features_input)
+        pre_selection = to_int(max_features_input)
+        pre_selection_trees = to_int(max_features_input)
+
         saveto_name = st.text_input("Select output .pkl file name:", value="selected_features").replace('.pkl', "")
         saveto = os.path.join(os.path.dirname(__file__), "..", f"Features/Selected features/{saveto_name}.pkl")
         use_model_based = st.checkbox('Use model-specific scores/coefficients', value=True)

@@ -1,6 +1,7 @@
 from functions.cparam_funcs import *
 from scipy.signal import sosfilt
-from pyedflib import highlevel
+# from pyedflib import highlevel
+from functions.read_signals import read_signals
 from scipy import fft
 import numpy as np
 import time
@@ -18,49 +19,48 @@ def pRR20(sig):
 
 def hr_freq_params(sig, fs, name):
     L = len(sig)
-    sig_fft = abs(fft.fft(sig))[: int(L / 2)] * 2 / L
-    freq = fft.fftfreq(len(sig), d=1 / fs)[: int(L / 2)]
+    sig_fft_mag = abs(fft.fft(sig) * 2 / L)[: L // 2]
+    freq = fft.fftfreq(len(sig), d=1 / fs)[: L // 2]
+    sig_fft_sq = sig_fft_mag * sig_fft_mag
 
-    HF = sig_fft[np.where(np.logical_and(freq >= 0.15, freq < 0.4))] ** 2
-    LF = sig_fft[np.where(np.logical_and(freq >= 0.04, freq < 0.15))] ** 2
-    VLF = sig_fft[np.where(np.logical_and(freq >= 0.015, freq < 0.04))] ** 2
-    ULF = sig_fft[np.where(freq < 0.015)] ** 2
-    VHF = sig_fft[np.where(freq >= 0.4)] ** 2
-    all = sig_fft**2
-    sum_all = sum(all)
+    HF = sig_fft_sq[np.where(np.logical_and(freq >= 0.15, freq < 0.4))]
+    LF = sig_fft_sq[np.where(np.logical_and(freq >= 0.04, freq < 0.15))]
+    VLF = sig_fft_sq[np.where(np.logical_and(freq >= 0.015, freq < 0.04))]
+    ULF = sig_fft_sq[np.where(freq < 0.015)]
+    VHF = sig_fft_sq[np.where(freq >= 0.4)]
+    sum_all = sum(sig_fft_sq)
 
-    ret = []
-    names = []
+    ret = [sum(HF) / sum_all,
+           sum(LF) / sum_all,
+           sum(VLF) / sum_all,
+           sum(ULF) / sum_all,
+           sum(VHF) / sum_all,
+           sum(VLF) / sum(ULF),
+           sum(VLF) / sum(VHF),
+           sum(VHF) / (sum(ULF) + sum(VLF)),
+           HF.mean(),
+           LF.mean(),
+           VLF.mean(),
+           ULF.mean(),
+           VHF.mean(),
+           sig_fft_sq.mean()
+    ]
 
-    ret.append(sum(HF) / sum_all / len(HF))
-    names.append(f"{name} HF/all en")
-    ret.append(sum(LF) / sum_all / len(LF))
-    names.append(f"{name} LF/all en")
-    ret.append(sum(VLF) / sum_all / len(VLF))
-    names.append(f"{name} VLF/all en")
-    ret.append(sum(ULF) / sum_all / len(ULF))
-    names.append(f"{name} ULF/all en")
-    ret.append(sum(VHF) / sum_all / len(VLF))
-    names.append(f"{name} VHF/all en")
-    ret.append(sum(VLF) / sum(ULF) / len(VLF) * len(ULF))
-    names.append(f"{name} VLF/ULF en")
-    ret.append(sum(VLF) / sum(VHF) / len(VLF) * len(VHF))
-    names.append(f"{name} VLF/VHF en")
-    ret.append(sum(VHF) / (sum(ULF) + sum(VLF)) / len(VHF) * (len(ULF) + len(VLF)))
-    names.append(f"{name} VHF/(ULF+VLF) en")
-
-    ret.append(HF.mean())
-    names.append(f"{name} mean HF en")
-    ret.append(LF.mean())
-    names.append(f"{name} mean LF en")
-    ret.append(VLF.mean())
-    names.append(f"{name} mean VLF en")
-    ret.append(ULF.mean())
-    names.append(f"{name} mean ULF en")
-    ret.append(VHF.mean())
-    names.append(f"{name} mean VHF en")
-    ret.append(all.mean())
-    names.append(f"{name} mean all en")
+    names = [f"{name} HF/all en",
+             f"{name} LF/all en",
+             f"{name} VLF/all en",
+             f"{name} ULF/all en",
+             f"{name} VHF/all en",
+             f"{name} VLF/ULF en",
+             f"{name} VLF/VHF en",
+             f"{name} VHF/(ULF+VLF) en",
+             f"{name} mean HF en",
+             f"{name} mean LF en",
+             f"{name} mean VLF en",
+             f"{name} mean ULF en",
+             f"{name} mean VHF en",
+             f"{name} mean all en"
+    ]
 
     return ret, names
 
@@ -97,7 +97,7 @@ def hr_rhythms(sig, name, filters, ent, rhythms=range(4)):
     return ret, names
 
 
-def hr_interp_analyser(ds, fs, filters, wlt, level, ent=False):
+def hr_interp_analyser(ds, fs, filters, wlt, level_min, level, ent=False):
     vals, names = [], []
     for name in ds:
         new_vals, new_names = hr_freq_params(ds[name], fs, name)
@@ -106,7 +106,7 @@ def hr_interp_analyser(ds, fs, filters, wlt, level, ent=False):
         new_vals, new_names = time_params(ds[name], name, ent)
         vals = vals + new_vals
         names = names + new_names
-        new_vals, new_names = wave_params(ds[name], name, ent, wlt, level)
+        new_vals, new_names = wave_params(ds[name], name, ent, wlt, level_min, level)
         vals = vals + new_vals
         names = names + new_names
         new_vals, new_names = hr_rhythms(ds[name], name, filters, ent)
@@ -145,8 +145,8 @@ def hr_analyser(ds):
     return vals, names
 
 
-def generate_features_table(e, i, start_time, labels, filters, total_files, wlt, wlt_level, fs, selected_labels, logtxtbox):
-    signals, _, _ = highlevel.read_edf(i)
+def generate_features_table(e, i, start_time, labels, filters, total_files, wlt, wlt_level_min, wlt_level, fs, selected_labels, logtxtbox):
+    signals, *_ = read_signals(i)
 
     datarow = {label: signals[i] for i, label in enumerate(labels) if selected_labels[i] and 'interp' not in label}
     datarow2 = {label: signals[i] for i, label in enumerate(labels) if selected_labels[i] and 'interp' in label}
@@ -158,7 +158,7 @@ def generate_features_table(e, i, start_time, labels, filters, total_files, wlt,
         param_name.extend(param_name1)
 
     if len(datarow2) > 0:
-        val2, param_name2 = hr_interp_analyser(datarow2, fs, filters, wlt, wlt_level)
+        val2, param_name2 = hr_interp_analyser(datarow2, fs, filters, wlt, wlt_level_min, wlt_level)
         val.extend(val2)
         param_name.extend(param_name2)
 

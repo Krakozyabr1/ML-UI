@@ -12,47 +12,50 @@ def mode(x):
 def skewness(data):
     if len(data) < 3:
         return 0
-    mean = data.mean()
-    m3 = np.sum((data - mean) ** 3) / len(data)
+    
+    centered = data - data.mean()
+    m3 = np.mean(centered ** 3)  
     std3 = data.std() ** 3
-    if std3 == 0:
-        return 0
-    return m3 / std3
+
+    return m3 / std3 if std3 != 0 else 0 
 
 
 def kurtosis(data):
     if len(data) < 4:
         return 0
-    centered_data = data - data.mean()
-    squared_deviations = centered_data**2
-    variance_sq = squared_deviations.mean() ** 2
-    if variance_sq == 0:
+    
+    centered = data - data.mean()
+    variance = np.mean(centered * centered) 
+
+    if variance == 0:
         return 0
-    fourth_moment = np.mean(centered_data**4)
-    return fourth_moment / variance_sq - 3
+    
+    m4 = np.mean(centered ** 4)
+
+    return m4 / (variance * variance) - 3
 
 
 def time_params(sig, name, ent=False):
     diff = sig[1:-1] - sig[0:-2]
-    ret = []
-    names = []
+    ret = [sig.mean(),
+           sig.std(),
+           diff.std(),
+           np.abs(diff).mean(),
+           np.sqrt((sig * sig).mean()),
+           mode(sig),
+           kurtosis(sig),
+           skewness(sig)
+           ]
+    names = [f"{name} mean",
+             f"{name} std",
+             f"{name} diff std",
+             f"{name} diff mean",
+             f"{name} RMS",
+             f"{name} mode",
+             f"{name} kurt",
+             f"{name} skew"
+             ]
 
-    ret.append(sig.mean())
-    names.append(f"{name} mean")
-    ret.append(sig.std())
-    names.append(f"{name} std")
-    ret.append(diff.std())
-    names.append(f"{name} diff std")
-    ret.append(np.sqrt((sig**2).mean()))
-    names.append(f"{name} RMS")
-    ret.append(np.cov(sig))
-    names.append(f"{name} covmat")
-    ret.append(mode(sig))
-    names.append(f"{name} mode")
-    ret.append(kurtosis(sig))
-    names.append(f"{name} kurt")
-    ret.append(skewness(sig))
-    names.append(f"{name} skew")
     if ent:
         new_vals, new_names = entropy_params(sig, name)
         ret = ret + new_vals
@@ -61,40 +64,27 @@ def time_params(sig, name, ent=False):
     return ret, names
 
 
-def wave_params(sig, name, ent, wlt, level):
-    cA, *cDs = wavedec(sig, wlt, level=level)
-    ret = []
-    names = []
+def wave_params(sig, name, ent, wlt, level_min, level):
+    cA, *cDs_all = wavedec(sig, wlt, level=level)
+    cDs = cDs_all[:-level_min]
 
-    en_sum = 0
-    for i, cD in enumerate(cDs[::-1], start=1):
-        cDen = sum(cD**2) / len(cD)
-        ret.append(cDen)
-        names.append(f"{name} cD{i} energy")
-        en_sum = en_sum + cDen
+    coeffs = cDs[::-1] + [cA]
+    coeff_names = [f"cD{i+1}" for i in range(len(cDs))] + [f"cA{level}"]
+
+    energies = [np.mean(c**2) for c in coeffs]
+    en_sum = np.sum(energies)
+    relative_energies = [e / en_sum for e in energies]
+
+    ret = energies
+    names = [f"{name} {c_name} energy" for c_name in coeff_names]
     
-    cAen = sum(cA**2) / len(cA)
-    ret.append(cAen)
-    names.append(f"{name} cA{level} energy")
-    en_sum = en_sum + cAen
+    ret.extend(relative_energies)
+    names.extend([f"{name} {c_name} rel energy" for c_name in coeff_names])
 
-    for i, cD in enumerate(cDs[::-1], start=1):
-        cDrelen = sum(cD**2) / len(cD) / en_sum
-        ret.append(cDrelen)
-        names.append(f"{name} cD{i} rel energy")
-
-    cArelen = cAen / en_sum
-    ret.append(cArelen)
-    names.append(f"{name} cA{level} rel energy")
-
-    for i, cD in enumerate(cDs[::-1], start=1):
-        rt, nt = time_params(cD, name, ent)
-        ret = ret + rt
-        names = names + [f"cD{i} {x}" for x in nt]
-
-    rt, nt = time_params(cA, name, ent)
-    ret = ret + rt
-    names = names + [f"cA{level} {x}" for x in nt]
+    for c_name, c in zip(coeff_names, coeffs):
+        rt, nt = time_params(c, name, ent) 
+        ret.extend(rt)
+        names.extend([f"{c_name} {x}" for x in nt])
 
     return ret, names
 

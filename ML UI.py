@@ -1,5 +1,5 @@
 from functions.sgram_part import sgram_part
-from functions.read_edf import readedf
+from functions.read_signals import read_signals
 import matplotlib.pyplot as plt
 import streamlit as st
 from scipy import fft
@@ -23,8 +23,8 @@ _reset_pre_selection_page_state()
 st.session_state['last_active_page'] = PAGE_NAME
 
 @st.cache_resource
-def call_readedf(selected_file):
-    return readedf(selected_file)
+def call_read_signals(selected_file):
+    return read_signals(selected_file)
 
 
 folders_to_create = [
@@ -60,7 +60,7 @@ with left:
         select_file_b = st.form_submit_button("Confirm", type="primary")
 
 if file_dir != "":
-    signals, signal_headers, header, sig_labels, fs, selected_labels = call_readedf(
+    signals, signal_types, dimensions, sig_labels, fs, selected_labels = call_read_signals(
         file_dir + "\\" + selected_file
     )
 
@@ -68,7 +68,7 @@ with right:
     if file_dir != "":
         variants_available = ["Manually", "All"]
         for var in variants:
-            for sig_label in sig_labels:
+            for sig_label in signal_types:
                 if var in sig_label:
                     variants_available.append(var)
                     break
@@ -81,7 +81,7 @@ with right:
                     selected_labels[i] = st.checkbox(
                         label,
                         disabled=(selected_vars != "Manually"),
-                        value=(selected_vars == "All" or selected_vars in label),
+                        value=(selected_vars == "All" or selected_vars in signal_types[i]),
                     )
             t_left, t_right = st.columns(2)
             with t_left:
@@ -149,7 +149,7 @@ with left:
                                     t_end = -1
                                 plt.plot(t[t_start:t_end], signals[i][t_start:t_end])
                                 plt.xlim([min(t[t_start:t_end]), max(t[t_start:t_end])])
-                                plt.ylabel(f'U, {signal_headers[i]["dimension"]}')
+                                plt.ylabel(f'U, {dimensions[i]}')
                                 plt.xlabel("t, s")
                             elif j == 1:
                                 L = len(signals[i][t_start:t_end])
@@ -166,7 +166,7 @@ with left:
                                 else:
                                     plt.plot(freq[f1:f2],sig_fft[f1:f2])
                                 plt.xlim([min(freq[f1:f2]), max(freq[f1:f2])])
-                                plt.ylabel(f'A, {signal_headers[i]["dimension"]}')
+                                plt.ylabel(f'A, {dimensions[i]}')
                                 plt.xlabel("f, Hz")
                             elif j == 2:
                                 ff, tt, Sxx, _ = sgram_part(signals[i][t_start:t_end], fs, win_width, [f_start, f_stop], overlap)

@@ -28,6 +28,18 @@ def _reset_pre_selection_page_state():
 _reset_pre_selection_page_state()
 st.session_state['last_active_page'] = PAGE_NAME
 
+def to_int(value):
+    try:
+        return int(value)
+    except ValueError:
+        st.warning(f"Cannot convert '{value}' to an integer: Invalid value.")
+        return None
+    except TypeError:
+        st.warning(f"Cannot convert '{value}' to an integer: Invalid type.")
+        return None
+    except Exception as e:
+        st.warning(f"Cannot convert '{value}' to an integer: {e}")
+        return None
 
 @st.cache_resource(show_spinner=False)  
 def call_plotter_reg(predictions, y_test, Methods, Accs, use_sig, use_round):
@@ -76,10 +88,11 @@ with left:
                 with right2:
                     use_round = st.checkbox('Round output', value=False)
 
-            pre_selected_num = int(
-                    st.text_input("Number of features to use for BayesSearchCV:", value="-1")
-                )
-            n_iter = int(st.text_input("Number of iterations for BayesSearchCV:", value="20"))
+            pre_selected_num_input = st.text_input("Number of features to use for BayesSearchCV:", value="-1")
+            n_iter_input = st.text_input("Number of iterations for BayesSearchCV:", value="20")
+
+            pre_selected_num = to_int(pre_selected_num_input)
+            n_iter = to_int(n_iter_input)
 
             saveto_name = st.text_input("Select output .pkl file name:", value="selected_models").replace('.pkl', "")
             saveto = os.path.join(os.path.dirname(__file__), "..", f"Models/Pre-selection/{saveto_name}.pkl")
