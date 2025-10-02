@@ -52,7 +52,7 @@ with left:
     
     with st.form("file_selector_form", clear_on_submit=False):
         learning_check = st.checkbox('Learning', value=True)
-        s_dir = st.text_input("Select .edf files directory:", value="").replace('"', "")
+        s_dir = st.text_input("Select signal files directory:", value="").replace('"', "")
         if s_dir != "":
             if learning_check:
                 classes = os.listdir(s_dir)

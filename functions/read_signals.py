@@ -16,7 +16,7 @@ import numpy as np
 #     return signals, dimensions, sig_labels, fs, selected_labels
 
 def read_signals(selected_file):
-    raw = read_raw(selected_file)
+    raw = read_raw(selected_file, verbose=False)
         
     signals = raw.get_data()
     fs = raw.info['sfreq']

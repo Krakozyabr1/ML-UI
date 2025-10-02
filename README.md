@@ -1,7 +1,7 @@
 # Web Application for Electrophysiological Signal Analysis
 
 This web application is designed for the analysis of electrophysiological signals, specifically focusing on electroencephalogram (EEG), electrocardiogram (ECG), and cardiorhythmogram (CRG) signals. The software automates many routine operations, including data processing and model training.
-Currently, it supports multi-channel recordings in the .edf format.
+Currently, it supports multi-channel recordings in standard formats like EDF, BDF, and GDF. It can also theoretically open many other formats supported by MNE-Python (e.g., BrainVision, EEGLAB, CTF), which are listed in the MNE-Python documentation but have not yet been fully tested.
 Also it can be used with tabular data (in this case just skip feature extraction step and put csv file into Features folder).
 
 **Key Features:**

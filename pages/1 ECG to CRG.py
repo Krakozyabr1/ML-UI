@@ -31,7 +31,7 @@ def call_read_signals(selected_file):
 left, right = st.columns(2)
 with left:
     with st.form("file_selector_form", clear_on_submit=False):
-        file_dir = st.text_input("Select .edf files directory:", value="").replace(
+        file_dir = st.text_input("Select signal files directory:", value="").replace(
             '"', ""
         )
 

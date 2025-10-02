@@ -26,30 +26,35 @@ st.session_state['last_active_page'] = PAGE_NAME
 def call_read_signals(selected_file):
     return read_signals(selected_file)
 
+@st.cache_resource
+def setup_folders():
+    folders_to_create = [
+        "Features/Learning",
+        "Features/Selected features",
+        "Features/ToClassify",
+        "Models/Pre-selection",
+        "Models/Trained",
+        "Classified",
+    ]
 
-folders_to_create = [
-    "Features/Learning",
-    "Features/Selected features",
-    "Features/ToClassify",
-    "Models/Pre-selection",
-    "Models/Trained",
-    "Classified",
-]
+    new = False
+    
+    for folder in folders_to_create:
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+            print(f"Created folder: {folder}")
+            new = True
+    
+    if not new:
+        print("All required folders already exist.")
 
-for folder in folders_to_create:
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-        print(f"Created folder: {folder}")
-    else:
-        print(f"Folder already exists: {folder}")
-
-variants = ["EEG", "ECG"]
+setup_folders()
 
 
 left, right = st.columns(2)
 with left:
     with st.form("file_selector_form", clear_on_submit=False):
-        file_dir = st.text_input("Select .edf files directory:", value="").replace(
+        file_dir = st.text_input("Select signal files directory:", value="").replace(
             '"', ""
         )
         if file_dir != "":
@@ -66,12 +71,7 @@ if file_dir != "":
 
 with right:
     if file_dir != "":
-        variants_available = ["Manually", "All"]
-        for var in variants:
-            for sig_label in signal_types:
-                if var in sig_label:
-                    variants_available.append(var)
-                    break
+        variants_available = ["Manually", "All"] + list(set(signal_types))
         selected_vars = st.selectbox("Select labels", options=variants_available)
     with st.form("my_form", clear_on_submit=False, border=False):
         if file_dir != "":
