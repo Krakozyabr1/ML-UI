@@ -31,7 +31,7 @@ def read_and_prepare(df_path):
 
 
 @st.cache_resource(show_spinner=False)
-def evaluate_scores(dft,eval_method,to_plot=True):
+def call_evaluate_scores(dft,eval_method,to_plot=True):
     return evaluate_scores(dft,eval_method,to_plot)
 
 
@@ -69,7 +69,7 @@ if df_path_option != "":
     with left:
         with st.form("plot_selector_form", clear_on_submit=False):
             df = read_and_prepare(df_path)
-            labels = evaluate_scores(df,eval_method,False)
+            labels = call_evaluate_scores(df,eval_method,False)
             class_label =  df.columns[-1]
             hist_label = st.selectbox("Histogram:", options=labels, index=0)
             box_label = st.selectbox("Boxplot:", options=labels, index=0)
@@ -81,10 +81,10 @@ if df_path_option != "":
             select_plot_b = st.form_submit_button("Plot", type="primary")
 
 if select_file_b:
-    evaluate_scores.clear()
+    call_evaluate_scores.clear()
 
 if df_path_option != "" or (select_file_b and df_path_option != ""):
     with right:
-        _ = evaluate_scores(df,eval_method)
+        _ = call_evaluate_scores(df,eval_method)
     plot_features(df,hist_label,box_label,pair_Xlabel,pair_Ylabel)
     

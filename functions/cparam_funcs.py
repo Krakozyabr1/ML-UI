@@ -42,7 +42,7 @@ def time_params(sig, name, ent=False):
            diff.std(),
            np.abs(diff).mean(),
            np.sqrt((sig * sig).mean()),
-           mode(sig),
+           np.median(sig),
            kurtosis(sig),
            skewness(sig)
            ]
@@ -66,7 +66,10 @@ def time_params(sig, name, ent=False):
 
 def wave_params(sig, name, ent, wlt, level_min, level):
     cA, *cDs_all = wavedec(sig, wlt, level=level)
-    cDs = cDs_all[:-level_min]
+    if level_min == 0:
+        cDs = cDs_all
+    else:
+        cDs = cDs_all[:-level_min]
 
     coeffs = cDs[::-1] + [cA]
     coeff_names = [f"cD{i+1}" for i in range(len(cDs))] + [f"cA{level}"]
@@ -77,7 +80,7 @@ def wave_params(sig, name, ent, wlt, level_min, level):
 
     ret = energies
     names = [f"{name} {c_name} energy" for c_name in coeff_names]
-    
+
     ret.extend(relative_energies)
     names.extend([f"{name} {c_name} rel energy" for c_name in coeff_names])
 
