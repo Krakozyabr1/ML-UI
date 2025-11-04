@@ -70,11 +70,14 @@ def create_filters(fs, rhythms=range(7)):
     for i in rhythms:
         ww = ws[i]
         wwp = np.mean(ww) / 10
-        filters.append(create_filter(ww, [ww[0] - wwp, ww[1] + wwp], fs))
+        if ww[1] + wwp < fs / 2:
+            filters.append(create_filter(ww, [ww[0] - wwp, ww[1] + wwp], fs))
     return filters
 
 
-def eeg_rhythms(sig, name, filters, ent, rhythms=range(7)):
+def eeg_rhythms(sig, name, filters, ent, rhythms=None):
+    if rhythms is None:
+        rhythms = range(len(filters))
     rts = ["delta", "theta", "alpha", "beta1", "beta2", "gamma1", "gamma2"]
     ret = []
     names = []
@@ -94,7 +97,7 @@ def eeg_analyser(ds, fs, filters, wlt, level_min, level, ent=False):
         new_vals, new_names = eeg_freq_params(ds[name], fs, name)
         vals = vals + new_vals
         names = names + new_names
-        new_vals, new_names = time_params(ds[name], name, ent)
+        new_vals, new_names = time_params(ds[name], name, ent, no_mean=True)
         vals = vals + new_vals
         names = names + new_names
         new_vals, new_names = wave_params(ds[name], name, ent, wlt, level_min, level)
@@ -107,9 +110,11 @@ def eeg_analyser(ds, fs, filters, wlt, level_min, level, ent=False):
     return vals, names
 
 
-def generate_features_table(e, i, start_time, labels, filters, total_files, wlt, wlt_level_min, wlt_level, fs, selected_labels, logtxtbox):
-    signals, *_ = read_signals(i)
+def generate_features_table(e, i, start_time, labels, filters, total_files, wlt, wlt_level_min, wlt_level, fs, selected_labels, logtxtbox, selected_ref):
+    signals, *_ = read_signals(i, selected_ref)
 
+    signals = signals - np.mean(signals, axis=1)[:, np.newaxis]
+        
     datarow = {label: signals[i] for i, label in enumerate(labels) if selected_labels[i]}
 
     val, param_name = eeg_analyser(datarow, fs, filters, wlt, wlt_level_min, wlt_level)

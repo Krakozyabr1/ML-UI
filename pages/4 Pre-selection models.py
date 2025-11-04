@@ -98,17 +98,21 @@ with left:
             saveto = os.path.join(os.path.dirname(__file__), "..", f"Models/Pre-selection/{saveto_name}.pkl")
 
             if analysis_type == 'Regression':
-                available_models = ['Ridge', 'Lasso', 'ElasticNet', 'DecisionTreeRegressor',
-                                    'SVR','KNeighborsRegressor', 'XGBRegressor']
+                from functions.regression_config import REGRESSION_MODELS
+                models = REGRESSION_MODELS
                 
             elif analysis_type == 'Classification':
-                available_models = ['LogisticRegression','KNeighborsClassifier','GaussianNB',
-                                    'DecisionTreeClassifier','RandomForestClassifier',
-                                    'GradientBoostingClassifier','RidgeClassifier','SVC']
+                from functions.classification_config import CLASSIFICATION_MODELS
+                models = CLASSIFICATION_MODELS
             
+            available_models = models.keys()
             to_use = [True] * len(available_models)
+
             for i, to_use_label in enumerate(available_models):
-                to_use[i] = st.checkbox(to_use_label, True, key=f"model_checkbox_{i}_form")
+                if to_use_label in ['LogisticRegression_L1','LogisticRegression_L2']:
+                    to_use[i] = st.checkbox(to_use_label, value=False, key=f"model_checkbox_{i}_form")
+                else:
+                    to_use[i] = st.checkbox(to_use_label, value=True, key=f"model_checkbox_{i}_form")
 
             select_file_b = st.form_submit_button("Confirm", type="primary")
 

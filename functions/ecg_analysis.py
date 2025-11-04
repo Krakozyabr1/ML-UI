@@ -74,17 +74,22 @@ def create_filters(fs, rhythms=range(8)):
         ww = ws[i]
         if rts[i] == "BW":
             wwp = ww / 10
-            filters.append(create_filter(ww, ww + wwp, fs, btype="lowpass"))
+            if ww + wwp < fs / 2:
+                filters.append(create_filter(ww, ww + wwp, fs, btype="lowpass"))
         elif rts[i] in ["HF", "EMG"]:
             wwp = ww / 10
-            filters.append(create_filter(ww, ww - wwp, fs, btype="highpass"))
+            if ww < fs / 2:
+                filters.append(create_filter(ww, ww - wwp, fs, btype="highpass"))
         else:
             wwp = np.mean(ww) / 10
-            filters.append(create_filter(ww, [ww[0] - wwp, ww[1] + wwp], fs))
+            if ww[1] + wwp < fs / 2:
+                filters.append(create_filter(ww, [ww[0] - wwp, ww[1] + wwp], fs))
     return filters
 
 
-def ecg_rhythms(sig, name, filters, ent, rhythms=range(4)):
+def ecg_rhythms(sig, name, filters, ent, rhythms=None):
+    if rhythms is None:
+         rhythms = range(len(filters))
     rts = ["PLI", "P/T", "Motion", "QRS", "MF", "BW", "HF", "EMG"]
     ret = []
     names = []
@@ -104,7 +109,7 @@ def ecg_analyser(ds, fs, filters, wlt, level_min, level, ent=False):
         new_vals, new_names = ecg_freq_params(ds[name], fs, name)
         vals = vals + new_vals
         names = names + new_names
-        new_vals, new_names = time_params(ds[name], name, ent)
+        new_vals, new_names = time_params(ds[name], name, ent, no_mean=True)
         vals = vals + new_vals
         names = names + new_names
         new_vals, new_names = wave_params(ds[name], name, ent, wlt, level_min, level)
@@ -117,9 +122,11 @@ def ecg_analyser(ds, fs, filters, wlt, level_min, level, ent=False):
     return vals, names
 
 
-def generate_features_table(e, i, start_time, labels, filters, total_files, wlt, wlt_level_min, wlt_level, fs, selected_labels, logtxtbox):
-                signals, *_ = read_signals(i)
+def generate_features_table(e, i, start_time, labels, filters, total_files, wlt, wlt_level_min, wlt_level, fs, selected_labels, logtxtbox, selected_ref):
+                signals, *_ = read_signals(i, False)
 
+                signals -= np.mean(signals, axis=1)[:, np.newaxis]
+                
                 datarow = {label: signals[i] for i, label in enumerate(labels) if selected_labels[i]}
 
                 val, param_name = ecg_analyser(datarow, fs, filters, wlt, wlt_level_min, wlt_level)

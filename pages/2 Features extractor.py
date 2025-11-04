@@ -1,8 +1,11 @@
+from functions.spatial_PCA import perform_spatial_pca, apply_spatial_pca_transformation
 from functions.read_signals import read_signals
 import streamlit as st
 import pandas as pd
+import numpy as np
 import warnings
 import time
+import json
 import os
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -36,6 +39,14 @@ def _reset_pre_selection_page_state():
 
 _reset_pre_selection_page_state()
 st.session_state['last_active_page'] = PAGE_NAME
+
+@st.cache_resource
+def call_perform_spatial_pca(df, n_components):
+    return perform_spatial_pca(df, n_components)
+
+@st.cache_resource
+def call_apply_spatial_pca_transformation(df, ci_location):
+    return apply_spatial_pca_transformation(df, ci_location)
 
 @st.cache_resource
 def call_read_signals(selected_file):
@@ -95,12 +106,35 @@ with left:
         st.text('Wavelet levels:')
         wlt_level_l, wlt_level_r = st.columns(2)
         with wlt_level_l:
-            wlt_level_min_input = st.text_input("From:", value=f"1")
+            wlt_level_min_input = st.text_input("From:", value="1")
         with wlt_level_r:
             wlt_level_input = st.text_input("To:", value=f"{corr_wavelet[signal_type][1]}")
 
+        pca_help_text = """
+                        The number of Principal Components (PCs) to save for each feature type (e.g., 'mean', 'std'):
+
+                        0: Skip PCA entirely (Original features saved).
+                        -1: Use ALL possible PCs (No dimensionality reduction; only decorrelation).
+                        1 to N: Use K specified PCs (Dimensionality reduction applied).
+
+                        Important: When running PCA in inference (non-learning) mode, the chosen output filename must match 
+                        the name of an existing PCA transformation JSON file saved during the training phase.
+                        """
+
+        pca_n_input = st.text_input("PCs to Save per Feature Type (0, -1, or K > 0)", value="0", help=pca_help_text)
+        ref_options = ['Raw', 'CAR', 'CMR', 'rCAR']
+        ref_help = """
+                    **Will be applied only to EEG**
+                    Raw - use raw signals
+                    CAR - subtracts the channel average (less noisy, but sensitive to artifacts)
+                    CMR - subtracts the channel median (not sensitive to artifacts, but more noisy)
+                    rCAR - robust CAR (less sensitive to artifacts than CAR and less noisy than CMR, but slower)
+                    """
+        selected_ref = st.selectbox("Use re-referencing", options=ref_options, help=ref_help)
+
         wlt_level_min = max([to_int(wlt_level_min_input) - 1, 0])
         wlt_level = to_int(wlt_level_input)
+        pca_n = to_int(pca_n_input)
         
         select_file_b = st.form_submit_button("Confirm", type="primary")
         
@@ -164,13 +198,13 @@ if 'analyze_b' in globals() and (is_ready and analyze_b):
         if learning_check:
             ds = [
                     analysis.generate_features_table(e, i, start_time, labels, filters, total_files,
-                                                         wlt, wlt_level_min, wlt_level, fs, selected_labels, logtxtbox)
+                                                         wlt, wlt_level_min, wlt_level, fs, selected_labels, logtxtbox, selected_ref)
                     for e, i in enumerate(ls)
                 ]
         else:
             ds = [
                 analysis.generate_features_table(e, s_dir+'\\'+i, start_time, labels, filters, total_files, 
-                                                     wlt, wlt_level_min, wlt_level, fs, selected_labels, logtxtbox)
+                                                     wlt, wlt_level_min, wlt_level, fs, selected_labels, logtxtbox, selected_ref)
                 for e, i in enumerate(ls)
             ]
 
@@ -179,7 +213,36 @@ if 'analyze_b' in globals() and (is_ready and analyze_b):
             df["Label"] = M
         else:
             df["Name"] = [x[:-4] for x in ls]
-        df.to_csv(saveto, columns=df.columns, header=df.columns, index=False)
+        
+        if pca_n == 0:
+
+            df.to_csv(saveto, columns=df.columns, header=df.columns, index=False)
+
+        else:
+
+            ci_location = os.path.join(os.path.dirname(__file__), "..", f"Component info/{saveto_name}.json")
+
+            if learning_check:
+
+                if pca_n < 0:
+                    pca_n = len(labels)
+                else:
+                    pca_n = min(len(labels), pca_n)
+
+                cols = df.columns
+                pca_df_int, component_info = call_perform_spatial_pca(df[cols[:-1]], n_components=pca_n)
+                pca_df_int[cols[-1]] = df[cols[-1]]
+                
+                with open(ci_location, 'w') as json_file:
+                    json.dump(component_info, json_file, indent=4)
+
+            else:
+                
+                cols = df.columns
+                pca_df_int = call_apply_spatial_pca_transformation(df[cols[:-1]], ci_location)
+                pca_df_int[cols[-1]] = df[cols[-1]]
+
+            pca_df_int.to_csv(saveto, columns=pca_df_int.columns, header=pca_df_int.columns, index=False)
 
         elap = time.time() - start_time
         elap_h = elap // 3600
@@ -187,4 +250,7 @@ if 'analyze_b' in globals() and (is_ready and analyze_b):
         elap_s = elap % 60
         st.text(f"Done! Time Elapsed: {elap_h:02.0f}:{elap_m:02.0f}:{elap_s:02.0f}")
 
-    st.dataframe(df, column_config={x: st.column_config.NumberColumn(format="%.3e") for x in df.columns[:-1]})
+    if pca_n == 0:
+        st.dataframe(df, column_config={x: st.column_config.NumberColumn(format="%.3e") for x in df.columns[:-1]})
+    else:
+        st.dataframe(pca_df_int, column_config={x: st.column_config.NumberColumn(format="%.3e") for x in pca_df_int.columns[:-1]})

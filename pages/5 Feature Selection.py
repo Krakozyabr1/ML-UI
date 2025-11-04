@@ -48,7 +48,7 @@ def read_and_prepare(df_path):
 
 
 @st.cache_resource(show_spinner=False)
-def models_feature_selection(df_path, pkl_path, max_features):
+def models_feature_selection(df_path, pkl_path, max_features, pre_selection, pre_selection_trees):
     df = read_and_prepare(df_path)
     with open(pkl_path, 'rb') as f:
         if is_regression:
@@ -85,6 +85,7 @@ def models_feature_selection(df_path, pkl_path, max_features):
 
         if model_name in ['DecisionTreeClassifier','RandomForestClassifier','GradientBoostingClassifier','XGBRegressor','DecisionTreeRegressor']:
             if pre_selection_trees != -1:
+                pre_selection_trees = min([pre_selection_trees, len(df_X.columns)])
                 est.fit(df_X, dfY.values.ravel())
                 feature_importances = pd.Series(est.feature_importances_, index=df_X.columns)
                 selected_features = feature_importances.nlargest(pre_selection_trees).index
@@ -104,6 +105,7 @@ def models_feature_selection(df_path, pkl_path, max_features):
 
         elif model_name in ['LogisticRegression', 'RidgeClassifier', 'Ridge', 'Lasso', 'ElasticNet']:
             if pre_selection != -1:
+                pre_selection = min([pre_selection, len(df_X.columns)])
                 skb = SelectKBest([f_classif, f_regression][is_regression], k=pre_selection)
                 skb.fit_transform(df_X, dfY.values.ravel())
                 ft = skb.get_feature_names_out()
@@ -122,6 +124,7 @@ def models_feature_selection(df_path, pkl_path, max_features):
                                          scoring=["accuracy","r2"][is_regression])
         else:
             if pre_selection != -1:
+                pre_selection = min([pre_selection, len(df_X.columns)])
                 skb = SelectKBest([mutual_info_classif, mutual_info_regression][is_regression], k=pre_selection)
                 skb.fit_transform(df_X, dfY.values.ravel())
                 ft = skb.get_feature_names_out()
@@ -171,8 +174,8 @@ with left:
         pre_selection_trees_input = st.text_input("Number of pre-selected features (tree-based):", value="-1")
 
         max_features = to_int(max_features_input)
-        pre_selection = to_int(max_features_input)
-        pre_selection_trees = to_int(max_features_input)
+        pre_selection = to_int(pre_selection_input)
+        pre_selection_trees = to_int(pre_selection_trees_input)
 
         saveto_name = st.text_input("Select output .pkl file name:", value="selected_features").replace('.pkl', "")
         saveto = os.path.join(os.path.dirname(__file__), "..", f"Features/Selected features/{saveto_name}.pkl")
@@ -187,9 +190,9 @@ if select_file_b:
 if (df_path_option != "" and pkl_path_option != "") or (select_file_b and df_path_option != "" and pkl_path_option != ""):
     with right:
         if is_regression:
-            models, scaler = models_feature_selection(df_path, pkl_path, max_features)
+            models, scaler = models_feature_selection(df_path, pkl_path, max_features, pre_selection, pre_selection_trees)
         else:
-            models, scaler, le = models_feature_selection(df_path, pkl_path, max_features)
+            models, scaler, le = models_feature_selection(df_path, pkl_path, max_features, pre_selection, pre_selection_trees)
 
     with st.form("my_form", clear_on_submit=False, border=False):
         Methods = [i for (i, _) in models]

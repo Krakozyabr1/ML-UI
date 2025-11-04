@@ -35,13 +35,13 @@ def kurtosis(data):
     return m4 / (variance * variance) - 3
 
 
-def time_params(sig, name, ent=False):
-    diff = sig[1:-1] - sig[0:-2]
+def time_params(sig, name, ent=False, no_mean=False):
+    diff = sig[1:] - sig[0:-1]
     ret = [sig.mean(),
            sig.std(),
            diff.std(),
            np.abs(diff).mean(),
-           np.sqrt((sig * sig).mean()),
+        #    np.sqrt((sig * sig).mean()),
            np.median(sig),
            kurtosis(sig),
            skewness(sig)
@@ -50,8 +50,8 @@ def time_params(sig, name, ent=False):
              f"{name} std",
              f"{name} diff std",
              f"{name} diff mean",
-             f"{name} RMS",
-             f"{name} mode",
+            #  f"{name} RMS",
+             f"{name} median",
              f"{name} kurt",
              f"{name} skew"
              ]
@@ -61,7 +61,7 @@ def time_params(sig, name, ent=False):
         ret = ret + new_vals
         names = names + new_names
 
-    return ret, names
+    return ret[1*int(no_mean):], names[1*int(no_mean):]
 
 
 def wave_params(sig, name, ent, wlt, level_min, level):
@@ -85,9 +85,9 @@ def wave_params(sig, name, ent, wlt, level_min, level):
     names.extend([f"{name} {c_name} rel energy" for c_name in coeff_names])
 
     for c_name, c in zip(coeff_names, coeffs):
-        rt, nt = time_params(c, name, ent) 
+        rt, nt = time_params(c, f"{name} {c_name}", ent) 
         ret.extend(rt)
-        names.extend([f"{c_name} {x}" for x in nt])
+        names.extend(nt)
 
     return ret, names
 

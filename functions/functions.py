@@ -3,6 +3,7 @@ from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import cross_val_score
 from sklearn.metrics import ConfusionMatrixDisplay
+from sklearn.exceptions import ConvergenceWarning
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import LabelEncoder
 from joblib import Parallel, delayed
@@ -19,11 +20,12 @@ import pickle
 
 
 def feature_selection_importance(X, y, model, max_features, use_model_based, selection_method, is_regression, cv=5, scoring='accuracy'):
+    
     if use_model_based:
         if hasattr(model, 'feature_importances_'):
             importance = model.feature_importances_
         elif hasattr(model, 'coef_'):
-            importance = np.abs(model.coef_).flatten()
+            importance = np.sum(np.abs(model.coef_), axis=0)
         else:
             raise ValueError("Model does not have feature_importances_ or coef_ attribute.")
 
@@ -42,7 +44,7 @@ def feature_selection_importance(X, y, model, max_features, use_model_based, sel
                 scores = cross_val_score(clone(model), X_selected, y, cv=cv, scoring=scoring)
             return np.mean(scores), selected_features
 
-        results = Parallel(n_jobs=-1)(delayed(evaluate_features)(feature_indices[:i]) for i in tqdm(range(1, max_features + 1)))
+        results = Parallel(n_jobs=4)(delayed(evaluate_features)(feature_indices[:i]) for i in tqdm(range(1, max_features + 1)))
 
         for mean_score, selected_features in results:
             if mean_score > best_score:
@@ -58,7 +60,7 @@ def feature_selection_importance(X, y, model, max_features, use_model_based, sel
             floating=False,
             verbose=1,
             scoring=["accuracy","r2"][is_regression],
-            n_jobs=-1,
+            n_jobs=4,
             cv=5,
         )
 
@@ -302,20 +304,34 @@ def models_tuning_1(df_path, to_use, n_iter, pre_selected_num, analysis_type):
 
     status_text = ''
     logtxtbox = st.empty()
-    for i, (name, model) in enumerate(models.items()):
-        if to_use[i]:
-            status_text = status_text + f'{name+'...':<31}\t '
-            logtxtbox.text(status_text)
-            if analysis_type == 'Classification':
-                clf = BayesSearchCV(model, params_set[name], cv=5, n_points=2, n_iter=n_iter, n_jobs=-1)
-            elif analysis_type == 'Regression':
-                if name == 'SVR':
-                    clf = BayesSearchCV(model, params_set[name], cv=5, n_points=1, n_iter=n_iter, n_jobs=1, scoring='r2')
-                else:
-                    clf = BayesSearchCV(model, params_set[name], cv=5, n_points=2, n_iter=n_iter, n_jobs=-1, scoring='r2')
-            clf.fit(X, y)
-            estimators.append(clf.best_estimator_)
-            status_text = status_text + f'Done! (cv score: {round(clf.best_score_*100)}%)\n'
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=ConvergenceWarning)
+        for i, (name, model) in enumerate(models.items()):
+            if to_use[i]:
+                status_text = status_text + f'{name+'...':<31}\t '
+                logtxtbox.text(status_text)
+                if analysis_type == 'Classification':
+                    try:
+                        clf = BayesSearchCV(model, params_set[name], cv=5, n_points=2, n_iter=n_iter, n_jobs=4, verbose=0)
+                        clf.fit(X, y)
+                    except Exception as e:
+                        print(f"Parallel tuning failed due to: {e}. Retrying with n_jobs=2...")
+                        try:
+                            clf = BayesSearchCV(model, params_set[name], cv=5, n_points=2, n_iter=n_iter, n_jobs=2, verbose=0)
+                            clf.fit(X, y)
+                        except Exception as e_2:
+                            print(f"n_jobs=2 also failed. Retrying with n_jobs=1...")
+                            clf = BayesSearchCV(model, params_set[name], cv=5, n_points=2, n_iter=n_iter, n_jobs=1, verbose=0)
+                            clf.fit(X, y)
+                elif analysis_type == 'Regression':
+                    if name == 'SVR':
+                        clf = BayesSearchCV(model, params_set[name], cv=5, n_points=1, n_iter=n_iter, n_jobs=1, scoring='r2', verbose=0)
+                        clf.fit(X, y)
+                    else:
+                        clf = BayesSearchCV(model, params_set[name], cv=5, n_points=2, n_iter=n_iter, n_jobs=4, scoring='r2', verbose=0)
+                        clf.fit(X, y)
+                estimators.append(clf.best_estimator_)
+                status_text = status_text + f'Done! (cv score: {round(clf.best_score_*100)}%)\n'
 
     logtxtbox.text(status_text)
     predictions = [estimator.predict(X_test) for estimator in estimators]
@@ -371,7 +387,7 @@ def models_tuning_2(df_path, pkl_path, n_iter, analysis_type):
         from functions.regression_config import REGRESSION_PARAMS_SET, REGRESSION_MODELS
         params_set = REGRESSION_PARAMS_SET
         models = REGRESSION_MODELS
-    
+        
         X_train, X_test, y, y_test, loaded, yNames, scaler = prepare_data_2(df_path, pkl_path, to_encode=False)
     
     estimators = []
@@ -385,16 +401,33 @@ def models_tuning_2(df_path, pkl_path, n_iter, analysis_type):
             X = X_train.loc[:,selected_labels]
         except:
             X = X_train.iloc[:,selected_labels]
+        # if modelname == 'LogisticRegression':
+        #     modelname = 'LogisticRegression_L1'
         params = params_set[modelname]
         status_text = status_text + f'{modelname+'...':<31}\t '
         logtxtbox.text(status_text)
+        
         if analysis_type == 'Classification':
-                clf = BayesSearchCV(models[modelname], params, cv=5, n_points=2, n_iter=n_iter, n_jobs=-1)
+            try:
+                clf = BayesSearchCV(models[modelname], params, cv=5, n_points=2, n_iter=n_iter, n_jobs=4, verbose=0)
+                clf.fit(X, y)
+            except Exception as e:
+                print(f"Parallel tuning failed due to: {e}. Retrying with n_jobs=2...")
+                try:
+                    clf = BayesSearchCV(models[modelname], params, cv=5, n_points=2, n_iter=n_iter, n_jobs=2, verbose=0)
+                    clf.fit(X, y)
+                except Exception as e_2:
+                    print(f"n_jobs=2 also failed. Retrying with n_jobs=1...")
+                    clf = BayesSearchCV(models[modelname], params, cv=5, n_points=2, n_iter=n_iter, n_jobs=1, verbose=0)
+                    clf.fit(X, y)
         elif analysis_type == 'Regression':
             if modelname == 'SVR':
-                clf = BayesSearchCV(models[modelname], params, cv=5, n_points=1, n_iter=n_iter, n_jobs=1, scoring='r2')
+                clf = BayesSearchCV(models[modelname], params, cv=5, n_points=1, n_iter=n_iter, n_jobs=1, scoring='r2', verbose=0)
+                clf.fit(X, y)
             else:
-                clf = BayesSearchCV(models[modelname], params, cv=5, n_points=2, n_iter=n_iter, n_jobs=-1, scoring='r2')
+                clf = BayesSearchCV(models[modelname], params, cv=5, n_points=2, n_iter=n_iter, n_jobs=4, scoring='r2', verbose=0)
+                clf.fit(X, y)
+
         clf.fit(X, y)
         est = clf.best_estimator_
         estimators.append(est)

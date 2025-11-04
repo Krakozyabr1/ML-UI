@@ -23,8 +23,8 @@ _reset_pre_selection_page_state()
 st.session_state['last_active_page'] = PAGE_NAME
 
 @st.cache_resource
-def call_read_signals(selected_file):
-    return read_signals(selected_file)
+def call_read_signals(selected_file, use_REST):
+    return read_signals(selected_file, use_REST)
 
 @st.cache_resource
 def setup_folders():
@@ -34,6 +34,7 @@ def setup_folders():
         "Features/ToClassify",
         "Models/Pre-selection",
         "Models/Trained",
+        "Component info",
         "Classified",
     ]
 
@@ -62,11 +63,22 @@ with left:
                 file_dir += "\\"
             ls = [file_dir + "\\" + i for i in os.listdir(file_dir)]
             selected_file = st.selectbox("Select file", options=os.listdir(file_dir))
+        
+        ref_options = ['Raw', 'CAR', 'CMR', 'rCAR']
+        ref_help = """
+                    **Will be applied only to EEG**
+                    Raw - use raw signals
+                    CAR - subtracts the channel average (less noisy, but sensitive to artifacts)
+                    CMR - subtracts the channel median (not sensitive to artifacts, but more noisy)
+                    rCAR - robust CAR (less sensitive to artifacts than CAR and less noisy than CMR, but slower)
+                    """
+        selected_ref = st.selectbox("Use re-referencing", options=ref_options, help=ref_help)
+        
         select_file_b = st.form_submit_button("Confirm", type="primary")
 
 if file_dir != "":
     signals, signal_types, dimensions, sig_labels, fs, selected_labels = call_read_signals(
-        file_dir + "\\" + selected_file
+        file_dir + "\\" + selected_file, selected_ref
     )
 
 with right:
@@ -141,20 +153,20 @@ with left:
                             k = k + 1
                             plt.subplot(eff_num, 1, k)
                             if k == 1: plt.title(sig_labels[i])
+                            t_start = int(np.ceil(t_start * fs))
+                            if t_end > 0:
+                                t_end_i = int(t_end * fs)
+                            else:
+                                t_end_i = -1
                             if j == 0:
-                                t_start = int(np.ceil(t_start * fs))
-                                if t_end > 0:
-                                    t_end = int(t_end * fs)
-                                else:
-                                    t_end = -1
-                                plt.plot(t[t_start:t_end], signals[i][t_start:t_end])
-                                plt.xlim([min(t[t_start:t_end]), max(t[t_start:t_end])])
+                                plt.plot(t[t_start:t_end_i], signals[i][t_start:t_end_i])
+                                plt.xlim([min(t[t_start:t_end_i]), max(t[t_start:t_end_i])])
                                 plt.ylabel(f'U, {dimensions[i]}')
                                 plt.xlabel("t, s")
                             elif j == 1:
-                                L = len(signals[i][t_start:t_end])
-                                sig_fft = abs(fft.fft(signals[i][t_start:t_end] - np.mean(signals[i][t_start:t_end])))[: int(L / 2)] * 2 / L
-                                freq = fft.fftfreq(len(signals[i][t_start:t_end]), d=1 / fs)[: int(L / 2)]
+                                L = len(signals[i][t_start:t_end_i])
+                                sig_fft = abs(fft.fft(signals[i][t_start:t_end_i] - np.mean(signals[i][t_start:t_end_i])))[: int(L / 2)] * 2 / L
+                                freq = fft.fftfreq(len(signals[i][t_start:t_end_i]), d=1 / fs)[: int(L / 2)]
                                 df = freq[1] - freq[0]
                                 f1 = int(f_start / df)
                                 if f_stop > 0:
@@ -169,13 +181,13 @@ with left:
                                 plt.ylabel(f'A, {dimensions[i]}')
                                 plt.xlabel("f, Hz")
                             elif j == 2:
-                                ff, tt, Sxx, _ = sgram_part(signals[i][t_start:t_end], fs, win_width, [f_start, f_stop], overlap)
+                                ff, tt, Sxx, _ = sgram_part(signals[i][t_start:t_end_i], fs, win_width, [f_start, f_stop], overlap)
                                 tt = [x+t[t_start] for x in tt]
                                 plt.pcolormesh(tt, ff, Sxx, norm=[None, 'log'][log_gram], cmap="gnuplot")
                                 plt.ylabel("f, Hz")
                                 plt.xlabel("t, s")
                             elif j == 3:
-                                ff, tt, _, PSD = sgram_part(signals[i][t_start:t_end], fs, win_width, [f_start, f_stop], overlap)
+                                ff, tt, _, PSD = sgram_part(signals[i][t_start:t_end_i], fs, win_width, [f_start, f_stop], overlap)
                                 tt = [x+t[t_start] for x in tt]
                                 if log_PSD:
                                     plt.semilogy(tt, PSD)

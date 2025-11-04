@@ -73,17 +73,22 @@ def create_filters(fs, rhythms=range(4)):
         ww = ws[i]
         if rts[i] == "ULF":
             wwp = ww / 10
-            filters.append(create_filter(ww, ww + wwp, fs, btype="lowpass"))
+            if ww + wwp < fs / 2:
+                filters.append(create_filter(ww, ww + wwp, fs, btype="lowpass"))
         elif rts[i] == "VHF":
             wwp = ww / 10
-            filters.append(create_filter(ww, ww - wwp, fs, btype="highpass"))
+            if ww < fs / 2:
+                filters.append(create_filter(ww, ww - wwp, fs, btype="highpass"))
         else:
             wwp = np.mean(ww) / 10
-            filters.append(create_filter(ww, [ww[0] - wwp, ww[1] + wwp], fs))
+            if ww[1] + wwp < fs / 2:
+                filters.append(create_filter(ww, [ww[0] - wwp, ww[1] + wwp], fs))
     return filters
 
 
-def hr_rhythms(sig, name, filters, ent, rhythms=range(4)):
+def hr_rhythms(sig, name, filters, ent, rhythms=None):
+    if rhythms is None:
+        rhythms = range(len(filters))
     rts = ["HF", "LF", "VLF", "ULF", "VHF"]
     ret = []
     names = []
@@ -145,8 +150,8 @@ def hr_analyser(ds):
     return vals, names
 
 
-def generate_features_table(e, i, start_time, labels, filters, total_files, wlt, wlt_level_min, wlt_level, fs, selected_labels, logtxtbox):
-    signals, *_ = read_signals(i)
+def generate_features_table(e, i, start_time, labels, filters, total_files, wlt, wlt_level_min, wlt_level, fs, selected_labels, logtxtbox, selected_ref):
+    signals, *_ = read_signals(i, False)
 
     datarow = {label: signals[i] for i, label in enumerate(labels) if selected_labels[i] and 'interp' not in label}
     datarow2 = {label: signals[i] for i, label in enumerate(labels) if selected_labels[i] and 'interp' in label}
